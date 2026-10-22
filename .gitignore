@@ -1,0 +1,47 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Frontend
+node_modules/
+.next/
+out/
+.vercel/
+frontend/.env.local
+frontend/.env.*.local
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated reports
+agentarena_report.json
+.agentarena_report.json
+.agentarena_docker_report.json
+
+# Research cache
+.cache/
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Generated adversarial tests
+**/test_adversarial.py

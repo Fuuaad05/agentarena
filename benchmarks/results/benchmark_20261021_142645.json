@@ -1,0 +1,38 @@
+[
+  {
+    "scenario": "authentication",
+    "configuration": "baseline",
+    "investigation_id": 16,
+    "status": "INCONCLUSIVE",
+    "evidence_score": null,
+    "original_total": 3,
+    "original_passed": 3,
+    "adversarial_total": 0,
+    "adversarial_passed": 0,
+    "adversarial_failed": 0,
+    "assertion_failure_count": 0,
+    "research_sources": 0,
+    "research_cached": false,
+    "duration_seconds": 9.89,
+    "known_bug_detected": null,
+    "failure_evidence": []
+  },
+  {
+    "scenario": "authentication",
+    "configuration": "tavily",
+    "investigation_id": 17,
+    "status": "INCONCLUSIVE",
+    "evidence_score": null,
+    "original_total": 3,
+    "original_passed": 3,
+    "adversarial_total": 0,
+    "adversarial_passed": 0,
+    "adversarial_failed": 0,
+    "assertion_failure_count": 0,
+    "research_sources": 3,
+    "research_cached": true,
+    "duration_seconds": 6.16,
+    "known_bug_detected": null,
+    "failure_evidence": []
+  }
+]

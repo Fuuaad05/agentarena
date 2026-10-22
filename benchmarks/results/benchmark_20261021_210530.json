@@ -1,0 +1,239 @@
+[
+  {
+    "scenario": "discount",
+    "configuration": "baseline",
+    "investigation_id": 34,
+    "status": "REJECTED",
+    "evidence_score": 70.0,
+    "original_total": 3,
+    "original_passed": 3,
+    "adversarial_total": 4,
+    "adversarial_passed": 1,
+    "adversarial_failed": 3,
+    "assertion_failure_count": 3,
+    "research_sources": 0,
+    "research_cached": false,
+    "duration_seconds": 20.76,
+    "known_bug_detected": null,
+    "failure_evidence": [
+      {
+        "test_name": "test_adversarial.py::test_zero_discount_returns_original_price_int",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_zero_discount_returns_original_price_int():\n>       assert calculate_discount(100, 0) == 100\nE       assert 0 == 100\nE        +  where 0 = calculate_discount(100, 0)\n\ntest_adversarial.py:5: AssertionError"
+      },
+      {
+        "test_name": "test_adversarial.py::test_zero_discount_returns_original_price_float",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_zero_discount_returns_original_price_float():\n>       assert calculate_discount(99.99, 0) == pytest.approx(99.99)\nE       assert 0 == 99.99 ± 1.0e-04\nE         \nE         comparison failed\nE         Obtained: 0\nE         Expected: 99.99 ± 1.0e-04\n\ntest_adversarial.py:8: AssertionError"
+      },
+      {
+        "test_name": "test_adversarial.py::test_zero_discount_large_price",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_zero_discount_large_price():\n>       assert calculate_discount(1000.0, 0) == 1000.0\nE       assert 0 == 1000.0\nE        +  where 0 = calculate_discount(1000.0, 0)\n\ntest_adversarial.py:14: AssertionError"
+      }
+    ]
+  },
+  {
+    "scenario": "discount",
+    "configuration": "tavily",
+    "investigation_id": 35,
+    "status": "REJECTED",
+    "evidence_score": 60.0,
+    "original_total": 3,
+    "original_passed": 3,
+    "adversarial_total": 3,
+    "adversarial_passed": 0,
+    "adversarial_failed": 3,
+    "assertion_failure_count": 3,
+    "research_sources": 3,
+    "research_cached": true,
+    "duration_seconds": 26.95,
+    "known_bug_detected": null,
+    "failure_evidence": [
+      {
+        "test_name": "test_adversarial.py::test_zero_discount_returns_full_price",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_zero_discount_returns_full_price():\n>       assert calculate_discount(100, 0) == 100\nE       assert 0 == 100\nE        +  where 0 = calculate_discount(100, 0)\n\ntest_adversarial.py:5: AssertionError"
+      },
+      {
+        "test_name": "test_adversarial.py::test_zero_discount_float",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_zero_discount_float():\n>       assert calculate_discount(59.99, 0) == pytest.approx(59.99)\nE       assert 0 == 59.99 ± 6.0e-05\nE         \nE         comparison failed\nE         Obtained: 0\nE         Expected: 59.99 ± 6.0e-05\n\ntest_adversarial.py:8: AssertionError"
+      },
+      {
+        "test_name": "test_adversarial.py::test_zero_discount_large_price",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_zero_discount_large_price():\n>       assert calculate_discount(1e6, 0) == pytest.approx(1e6)\nE       assert 0 == 1000000.0 ± 1\nE         \nE         comparison failed\nE         Obtained: 0\nE         Expected: 1000000.0 ± 1\n\ntest_adversarial.py:11: AssertionError"
+      }
+    ]
+  },
+  {
+    "scenario": "authentication",
+    "configuration": "baseline",
+    "investigation_id": 36,
+    "status": "REJECTED",
+    "evidence_score": 90.0,
+    "original_total": 3,
+    "original_passed": 3,
+    "adversarial_total": 4,
+    "adversarial_passed": 3,
+    "adversarial_failed": 1,
+    "assertion_failure_count": 1,
+    "research_sources": 0,
+    "research_cached": false,
+    "duration_seconds": 12.81,
+    "known_bug_detected": null,
+    "failure_evidence": [
+      {
+        "test_name": "test_adversarial.py::test_session_at_expiration_should_be_invalid",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_session_at_expiration_should_be_invalid():\n>       assert is_session_valid(100, 100) is False\nE       assert True is False\nE        +  where True = is_session_valid(100, 100)\n\ntest_adversarial.py:5: AssertionError"
+      }
+    ]
+  },
+  {
+    "scenario": "authentication",
+    "configuration": "tavily",
+    "investigation_id": 37,
+    "status": "REJECTED",
+    "evidence_score": 90.0,
+    "original_total": 3,
+    "original_passed": 3,
+    "adversarial_total": 4,
+    "adversarial_passed": 3,
+    "adversarial_failed": 1,
+    "assertion_failure_count": 1,
+    "research_sources": 3,
+    "research_cached": true,
+    "duration_seconds": 15.71,
+    "known_bug_detected": null,
+    "failure_evidence": [
+      {
+        "test_name": "test_adversarial.py::test_session_exactly_at_expiration_should_be_expired",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_session_exactly_at_expiration_should_be_expired():\n>       assert is_session_valid(100, 100) is False\nE       assert True is False\nE        +  where True = is_session_valid(100, 100)\n\ntest_adversarial.py:5: AssertionError"
+      }
+    ]
+  },
+  {
+    "scenario": "inventory",
+    "configuration": "baseline",
+    "investigation_id": 38,
+    "status": "REJECTED",
+    "evidence_score": 60.0,
+    "original_total": 3,
+    "original_passed": 3,
+    "adversarial_total": 4,
+    "adversarial_passed": 0,
+    "adversarial_failed": 4,
+    "assertion_failure_count": 4,
+    "research_sources": 0,
+    "research_cached": false,
+    "duration_seconds": 12.99,
+    "known_bug_detected": null,
+    "failure_evidence": [
+      {
+        "test_name": "test_adversarial.py::test_equal_stock_fulfills",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_equal_stock_fulfills():\n>       assert can_fulfill_order(10, 10) is True\nE       assert False is True\nE        +  where False = can_fulfill_order(10, 10)\n\ntest_adversarial.py:5: AssertionError"
+      },
+      {
+        "test_name": "test_adversarial.py::test_equal_stock_zero",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_equal_stock_zero():\n>       assert can_fulfill_order(0, 0) is True\nE       assert False is True\nE        +  where False = can_fulfill_order(0, 0)\n\ntest_adversarial.py:8: AssertionError"
+      },
+      {
+        "test_name": "test_adversarial.py::test_equal_stock_large",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_equal_stock_large():\n>       assert can_fulfill_order(1000, 1000) is True\nE       assert False is True\nE        +  where False = can_fulfill_order(1000, 1000)\n\ntest_adversarial.py:11: AssertionError"
+      },
+      {
+        "test_name": "test_adversarial.py::test_equal_stock_with_remaining_stock",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_equal_stock_with_remaining_stock():\n>       assert can_fulfill_order(5, 5) is True\nE       assert False is True\nE        +  where False = can_fulfill_order(5, 5)\n\ntest_adversarial.py:14: AssertionError"
+      }
+    ]
+  },
+  {
+    "scenario": "inventory",
+    "configuration": "tavily",
+    "investigation_id": 39,
+    "status": "REJECTED",
+    "evidence_score": 70.0,
+    "original_total": 3,
+    "original_passed": 3,
+    "adversarial_total": 4,
+    "adversarial_passed": 1,
+    "adversarial_failed": 3,
+    "assertion_failure_count": 3,
+    "research_sources": 3,
+    "research_cached": true,
+    "duration_seconds": 12.09,
+    "known_bug_detected": null,
+    "failure_evidence": [
+      {
+        "test_name": "test_adversarial.py::test_exact_match_should_be_fulfilled",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_exact_match_should_be_fulfilled():\n>       assert can_fulfill_order(10, 10) is True\nE       assert False is True\nE        +  where False = can_fulfill_order(10, 10)\n\ntest_adversarial.py:5: AssertionError"
+      },
+      {
+        "test_name": "test_adversarial.py::test_large_equal_values",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_large_equal_values():\n>       assert can_fulfill_order(1000, 1000) is True\nE       assert False is True\nE        +  where False = can_fulfill_order(1000, 1000)\n\ntest_adversarial.py:11: AssertionError"
+      },
+      {
+        "test_name": "test_adversarial.py::test_equality_with_zero_stock",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_equality_with_zero_stock():\n>       assert can_fulfill_order(0, 0) is True\nE       assert False is True\nE        +  where False = can_fulfill_order(0, 0)\n\ntest_adversarial.py:14: AssertionError"
+      }
+    ]
+  },
+  {
+    "scenario": "shipping",
+    "configuration": "baseline",
+    "investigation_id": 40,
+    "status": "REJECTED",
+    "evidence_score": 90.0,
+    "original_total": 4,
+    "original_passed": 4,
+    "adversarial_total": 4,
+    "adversarial_passed": 3,
+    "adversarial_failed": 1,
+    "assertion_failure_count": 1,
+    "research_sources": 0,
+    "research_cached": false,
+    "duration_seconds": 13.08,
+    "known_bug_detected": null,
+    "failure_evidence": [
+      {
+        "test_name": "test_adversarial.py::test_one_kg_inclusive",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_one_kg_inclusive():\n>       assert calculate_shipping(1.0) == 5\nE       assert 10 == 5\nE        +  where 10 = calculate_shipping(1.0)\n\ntest_adversarial.py:5: AssertionError"
+      }
+    ]
+  },
+  {
+    "scenario": "shipping",
+    "configuration": "tavily",
+    "investigation_id": 41,
+    "status": "REJECTED",
+    "evidence_score": 90.0,
+    "original_total": 4,
+    "original_passed": 4,
+    "adversarial_total": 4,
+    "adversarial_passed": 3,
+    "adversarial_failed": 1,
+    "assertion_failure_count": 1,
+    "research_sources": 3,
+    "research_cached": true,
+    "duration_seconds": 14.57,
+    "known_bug_detected": null,
+    "failure_evidence": [
+      {
+        "test_name": "test_adversarial.py::test_one_kg_inclusive",
+        "category": "ASSERTION_FAILURE",
+        "evidence": "def test_one_kg_inclusive():\n>       assert calculate_shipping(1.0) == 5\nE       assert 10 == 5\nE        +  where 10 = calculate_shipping(1.0)\n\ntest_adversarial.py:5: AssertionError"
+      }
+    ]
+  }
+]

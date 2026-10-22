@@ -1,0 +1,9 @@
+scenario,configuration,investigation_id,status,evidence_score,original_total,original_passed,adversarial_total,adversarial_passed,adversarial_failed,assertion_failure_count,research_sources,research_cached,duration_seconds,known_bug_detected
+discount,baseline,18,REJECTED,50.0,3,2,4,1,3,3,0,False,42.97,
+discount,tavily,19,REJECTED,60.0,3,2,4,2,2,2,3,False,17.74,
+authentication,baseline,20,REJECTED,70.0,3,3,4,1,3,3,0,False,11.26,
+authentication,tavily,21,REJECTED,80.0,3,3,4,2,2,2,3,True,10.71,
+inventory,baseline,22,REJECTED,40.0,3,2,4,0,4,4,0,False,10.19,
+inventory,tavily,23,REJECTED,50.0,3,2,4,1,3,3,3,False,20.45,
+shipping,baseline,24,REJECTED,92.0,4,4,5,4,1,1,0,False,14.74,
+shipping,tavily,25,REJECTED,90.0,4,4,4,3,1,1,3,False,16.35,
