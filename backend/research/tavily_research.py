@@ -3,6 +3,7 @@ import json
 import os
 import re
 import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -27,6 +28,27 @@ MAX_RESULTS = 3
 REQUEST_TIMEOUT = 15
 
 _cache_lock = threading.Lock()
+
+
+CACHE_SCHEMA_VERSION = 3
+_CALLBACK_SIGNATURE = r"(?:urllib\.parse\.)?parse(?:\\)?_qsl(?:[\s*`\[\]]){0,12}\("
+
+
+def callback_documentation_excerpt(raw):
+    """Find the function section in plain text or escaped Tavily Markdown.
+
+    Return the original contiguous text, with whitespace collapsed only.
+    Never replace an absent parse_qsl section with parse_qs documentation.
+    """
+    for signature in re.finditer(_CALLBACK_SIGNATURE, raw, re.I):
+        section = raw[signature.start():]
+        next_function = re.search(r"(?:urllib\.parse\.)?urlunparse(?:[\s*`\[\]]){0,12}\(", section, re.I)
+        if next_function:
+            section = section[:next_function.start()]
+        section = re.sub(r"\s+", " ", section).strip()[:1800]
+        if "blank values" in section.lower() or "blanks should" in section.lower():
+            return section
+    return None
 
 
 class TavilyResearch:
@@ -65,6 +87,8 @@ class TavilyResearch:
         """
 
         scenario_queries = {
+            "callback": "Python 3.11 urllib.parse.parse_qsl application/x-www-form-urlencoded parameters",
+            "redirect": "Python 3.11 urllib.parse urljoin reference absolute URL security warning",
             "discount": (
                 "percentage discount calculation "
                 "zero percent edge cases "
@@ -137,6 +161,10 @@ class TavilyResearch:
             if not isinstance(cached, dict):
                 return None
 
+            if cached.get("schema_version") != CACHE_SCHEMA_VERSION:
+                return None
+            if time.time() - cached.get("fetched_at", 0) > 86400:
+                return None
             cached["cached"] = True
 
             return cached
@@ -185,7 +213,7 @@ class TavilyResearch:
         bug_report: str,
     ) -> dict:
         """
-        Execute at most one Tavily search.
+        Execute one search, plus at most one exact-page extraction for redirect fallback.
 
         Returns a consistent dictionary whether research
         succeeds, is disabled, or fails.
@@ -223,12 +251,15 @@ class TavilyResearch:
             "query": query,
             "search_depth": "basic",
             "topic": "general",
-            "max_results": MAX_RESULTS,
+            "max_results": 5 if scenario_id in ("redirect", "callback") else MAX_RESULTS,
             "include_answer": False,
             "include_raw_content": False,
             "include_images": False,
         }
 
+        # For the documentation-led use case, use primary Python documentation.
+        if scenario_id in ("redirect", "callback"):
+            payload["include_domains"] = ["docs.python.org"]
         request = urllib.request.Request(
             TAVILY_ENDPOINT,
             data=json.dumps(payload).encode(
@@ -296,6 +327,9 @@ class TavilyResearch:
             ):
                 continue
 
+            if scenario_id == "callback":
+                content = callback_documentation_excerpt(content) or ""
+
             # Bound the size of external text sent to Nemotron.
             content = re.sub(
                 r"\s+",
@@ -303,11 +337,25 @@ class TavilyResearch:
                 content,
             )[:1000]
 
+            if scenario_id in ("redirect", "callback"):
+                from urllib.parse import urlparse
+                parsed = urlparse(url)
+                if parsed.hostname != "docs.python.org" or parsed.path != "/3.11/library/urllib.parse.html" or not content:
+                    continue
+            if scenario_id == "callback" and "blank" not in content.lower():
+                continue
             sources.append({
+                "id": f"S{len(sources) + 1}",
                 "title": title[:200],
                 "url": url,
                 "content": content,
             })
+
+        extraction_error = None
+        if scenario_id in ("redirect", "callback") and not sources:
+            # Search indexes may omit older documentation versions. Use the
+            # requested primary page, never silently substitute another version.
+            sources, extraction_error = self._extract_python_documentation(scenario_id)
 
         context_parts = []
 
@@ -317,7 +365,7 @@ class TavilyResearch:
         ):
 
             context_parts.append(
-                f"[SOURCE {index}]\n"
+                f"[SOURCE S{index}]\n"
                 f"Title: {source['title']}\n"
                 f"URL: {source['url']}\n"
                 f"Excerpt: {source['content']}"
@@ -336,12 +384,57 @@ class TavilyResearch:
                 context_parts
             ),
             "cached": False,
-            "error": None,
+            "schema_version": CACHE_SCHEMA_VERSION,
+            "fetched_at": time.time(),
+            "error": extraction_error,
         }
 
-        self._write_cache(
-            query,
-            result,
-        )
+        # An empty/filtered search must not suppress the next real attempt for 24 hours.
+        if sources:
+            self._write_cache(query, result)
 
         return result
+
+    def _extract_python_documentation(self, topic="redirect"):
+        url = "https://docs.python.org/3.11/library/urllib.parse.html"
+        request = urllib.request.Request(
+            "https://api.tavily.com/extract",
+            data=json.dumps({"urls": [url], "extract_depth": "basic", "include_images": False}).encode("utf-8"),
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            matching_pages = 0
+            extracted_chars = 0
+            signature_count = 0
+            for item in data.get("results", []):
+                if item.get("url", "").split("#")[0] != url:
+                    continue
+                matching_pages += 1
+                raw = str(item.get("raw_content") or "").strip()
+                extracted_chars = max(extracted_chars, len(raw))
+                signature_count += len(re.findall(_CALLBACK_SIGNATURE, raw, re.I))
+                if not raw:
+                    continue
+                # Use a contiguous passage from the actual retrieved document.
+                # The topic selector is curated; it is not a blind research agent.
+                if topic == "callback":
+                    excerpt = callback_documentation_excerpt(raw)
+                    if not excerpt:
+                        continue
+                else:
+                    raw = re.sub(r"\s+", " ", raw)
+                    focus = raw.lower().find("not secure")
+                    if focus < 0:
+                        focus = raw.lower().find("absolute url")
+                    if focus < 0:
+                        focus = raw.lower().find("urllib.parse.urljoin")
+                    excerpt = raw[max(0, focus - 350):max(0, focus - 350) + 1600]
+                return [{"id": "S1", "title": "Python 3.11 urllib.parse (Tavily Extract)",
+                         "url": url + ("#urllib.parse.parse_qsl" if topic == "callback" else ""), "content": excerpt}], None
+            return [], (f"Tavily did not return a parse_qsl section with blank-value documentation; no substitute section was used. Matching pages: {matching_pages}; extracted characters: {extracted_chars}; function markers: {signature_count}."
+                        if topic == "callback" else "Tavily search and exact-page extraction returned no usable Python 3.11 documentation.")
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError, ValueError) as error:
+            return [], f"Tavily exact-page extraction failed: {error}"

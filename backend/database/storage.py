@@ -1,14 +1,16 @@
 import json
 import sqlite3
+import os
 
 from pathlib import Path
 from datetime import datetime, timezone
 
 
-DATABASE_PATH = Path("agentarena.db")
+DATABASE_PATH = Path(os.getenv("DATA_DIR", str(Path(__file__).resolve().parents[2] / "data"))) / "agentarena.db"
 
 
 def get_connection():
+    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(
         DATABASE_PATH,
         timeout=30,
@@ -109,4 +111,6 @@ def get_investigation(investigation_id: int):
         if row is None:
             return None
 
-        return json.loads(row["report_json"])
+        report = json.loads(row["report_json"])
+        report["investigation_id"] = investigation_id
+        return report

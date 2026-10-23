@@ -1,0 +1,63 @@
+{
+  "project": "AgentArena",
+  "version": "1.0",
+  "timestamp": "2026-10-21T21:05:17.750693+00:00",
+  "scenario_id": "shipping",
+  "bug_report": "Some customers report being charged the wrong shipping fee for packages near the 1 kg boundary. Shipping should cost $5 for weights up to and including 1 kg.",
+  "coding_summary": "Adversarial Audit Mode: Source code was not modified.",
+  "patch_diff": "",
+  "verifier_analysis": "The current implementation incorrectly treats weight exactly 1 kg as medium tier, returning $10 instead of $5. Edge cases around the inclusive boundary need testing.",
+  "original_tests": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "error": 0
+  },
+  "adversarial_tests": {
+    "total": 4,
+    "passed": 3,
+    "failed": 1,
+    "error": 0
+  },
+  "evidence_score": 90.0,
+  "status": "REJECTED",
+  "explanation": "Adversarial tests exposed potential defects in the audited implementation.",
+  "failures": [
+    {
+      "test_name": "test_adversarial.py::test_one_kg_inclusive",
+      "category": "ASSERTION_FAILURE",
+      "explanation": "The test assertion failed. This may indicate a functional defect.",
+      "evidence": "def test_one_kg_inclusive():\n>       assert calculate_shipping(1.0) == 5\nE       assert 10 == 5\nE        +  where 10 = calculate_shipping(1.0)\n\ntest_adversarial.py:5: AssertionError"
+    }
+  ],
+  "research": {
+    "enabled": true,
+    "status": "completed",
+    "query": "shipping weight tier boundaries inclusive exclusive thresholds unit testing",
+    "sources": [
+      {
+        "title": "Tiered Pricing for Courier and Delivery Rates | OnTime 360 Blog",
+        "url": "https://www.ontime360.com/blog/post/tiered-pricing-delivery-rates",
+        "content": "The most costly pricing mistakes tend to appear at the boundaries. If a distance rate changes after 10 miles, test 9.99, 10.00, and 10.01 miles. If a weight bracket changes at 25 pounds, test the same three cases around 25. Repeat this for every rate break, then test a value below the first tier and above the final tier. [...] OnTime 360 supports tiered fixed and tiered incremental calculation options in Price Modifiers. Each tier has a start value, end value, and amount. The standard behavior starts with an inclusive lower boundary and an exclusive upper boundary, and each boundary can be changed when the contract requires it. A default amount can be set for values that do not match a tier. See the OnTime guide to creating tiered pricing. [...] The figures are illustrative, not recommended rates. The operational lesson is to decide whether the tier selects a rate for the entire calculation or whether the rate applies only after a threshold. Those are different commercial rules and sho"
+      },
+      {
+        "title": "How to Set Up a Shipping Test | Intelligems Docs",
+        "url": "https://docs.intelligems.io/shipping-experiences/shipping-testing-getting-started/how-to-set-up-a-shipping-test",
+        "content": "Example 4: Testing a free threshold with rates under threshold provided by third party app Example 5: Testing a free threshold with weight-based rates under threshold configured in Shopify #### Tiered by Price or Weight: Example 6: Testing rates for each weight-based tier Example 7: Testing rates and conditions for each weight-based tier #### Custom: Have something else you want to test? Let us know and we'll see what we can do! ## Step 6: Review your rates [...] If you currently show a shipping progress bar on your site or if you would like to include one for your test and you are testing shipping thresholds, it is recommended to use the built-in option from Intelligems found in the Global Styles components so that the bar will update with the test group. Adding the Intelligems progress bar typically requires adding a component to your theme's liquid code and customizing the bar's style in the Intelligems app. [...] #### Flat Rate: You are testing rate(s) that are not set up with cond"
+      },
+      {
+        "title": "How to Test Shipping Costs Without Hurting Conversions",
+        "url": "https://www.convert.com/blog/growth-marketing/how-to-test-shipping-prices",
+        "content": "## Get creative in your approach It\u2019s not just the minimum AOV you can test\u2014there are other levers worth exploring: Shipping tiers based on product types or fulfilment costs Delivery options, like offering premium shipping for faster delivery Framing, or how you communicate shipping costs and thresholds [...] Shipping thresholds might seem like a small detail, but they have a big impact on both your customer experience and your business\u2019s bottom line. Done right, testing thresholds can boost AOV and protect your margins. [...] It may be worth testing a higher minimum spend for free shipping. If you\u2019re unsure whether shipping costs are a meaningful lever, and you currently charge for shipping, try offering limited-time free shipping on all orders. A strong uptick in conversions typically indicates that shipping thresholds are influencing demand. ## Pre-requisites to testing around shipping thresholds"
+      }
+    ],
+    "cached": true,
+    "error": null,
+    "insights": [
+      "Boundary values should be tested both inclusive and exclusive per tiered pricing best practices."
+    ]
+  },
+  "mode": "audit",
+  "investigation_id": 41,
+  "recorded_example": true
+}

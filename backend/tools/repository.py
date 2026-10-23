@@ -5,8 +5,9 @@ import json
 from backend.sandbox.docker_runner import DockerSandbox
 
 class RepositoryTools:
-    def __init__(self, repo_path: str):
+    def __init__(self, repo_path: str, allowed_files=None):
         self.root = Path(repo_path).resolve()
+        self.allowed_files = set(allowed_files) if allowed_files else None
 
         if not self.root.exists():
             raise ValueError(f"Repository does not exist: {self.root}")
@@ -135,7 +136,7 @@ class RepositoryTools:
     def write_file(self, path: str, content: str) -> str:
         safe_path = self._safe_path(path)
 
-        if safe_path.name.startswith("test_"):
+        if (self.allowed_files is not None and str(safe_path.relative_to(self.root)) not in self.allowed_files) or safe_path.name == "conftest.py" or safe_path.name.startswith("test_"):
             return (
                 "ERROR: Modifying test files is forbidden. "
                 "Fix the production code instead."

@@ -108,10 +108,12 @@ class CodingAgent:
         self,
         repo_path: str,
         max_steps: int = 12,
+        allowed_files=None,
     ):
         self.llm = NebiusLLM()
-        self.repo = RepositoryTools(repo_path)
+        self.repo = RepositoryTools(repo_path, allowed_files=allowed_files)
         self.max_steps = max_steps
+        self.trace = []
 
     def execute_tool(self, name: str, arguments: dict) -> str:
         if name == "list_files":
@@ -195,6 +197,9 @@ class CodingAgent:
                 except Exception as error:
                     result = f"ERROR: {error}"
 
+                self.trace.append({"step": step, "tool": name,
+                                   "path": arguments.get("path"),
+                                   "result_excerpt": result[:600] if name != "read_file" else "Source file read; content omitted from trace."})
                 print("Result:")
                 print(result[:1500])
 

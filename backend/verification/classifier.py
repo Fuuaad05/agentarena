@@ -7,6 +7,7 @@ class FailureCategory(str, Enum):
     INVALID_TEST = "INVALID_TEST"
     EXECUTION_ERROR = "EXECUTION_ERROR"
     UNKNOWN = "UNKNOWN"
+    PRODUCTION_EXCEPTION = "PRODUCTION_EXCEPTION"
 
 
 @dataclass
@@ -19,6 +20,9 @@ class ClassifiedFailure:
 
 class FailureClassifier:
 
+    def __init__(self, production_files=()):
+        self.production_files = {str(name).replace("\\", "/") for name in production_files}
+
     def classify(self, test: dict) -> ClassifiedFailure:
 
         name = test.get(
@@ -30,6 +34,23 @@ class FailureClassifier:
             "error",
             "",
         )
+
+        crash = test.get("crash") or {}
+        crash_path = str(crash.get("path", "")).replace("\\", "/")
+        # Accept only the known workspace source, not a matching basename in
+        # another directory or exception text copied into a generated test.
+        in_source = any(crash_path in (name, "/workspace/" + name)
+                        for name in self.production_files)
+        kind = str(crash.get("message", "")).split(":", 1)[0]
+        supported = {"AttributeError", "TypeError", "ValueError", "ZeroDivisionError",
+                     "IndexError", "KeyError", "NameError", "UnboundLocalError",
+                     "RuntimeError", "OverflowError"}
+        if test.get("call_outcome") == "failed" and in_source and kind in supported:
+            return ClassifiedFailure(
+                test_name=name, category=FailureCategory.PRODUCTION_EXCEPTION,
+                explanation="The test call raised an exception inside the production source. A defect verdict also requires this same suite to pass the corrected reference.",
+                evidence=error,
+            )
 
         if "AssertionError" in error:
 

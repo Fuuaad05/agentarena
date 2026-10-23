@@ -1,0 +1,22 @@
+[Unit]
+Description=AgentArena backend
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+User=agentarena
+Group=agentarena
+SupplementaryGroups=docker
+WorkingDirectory=/opt/agentarena
+EnvironmentFile=/opt/agentarena/.env
+ExecStart=/opt/agentarena/.venv/bin/python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=full
+PrivateTmp=false
+
+[Install]
+WantedBy=multi-user.target

@@ -22,7 +22,6 @@ import {
   RotateCw,
   Terminal,
   TriangleAlert,
-
 } from "lucide-react";
 
 /* =====================================================
@@ -30,6 +29,8 @@ import {
 ===================================================== */
 
 type HealthStatus = {
+  ready?: boolean;
+  features?: { custom_audit?: boolean };
   status: string;
   ai_provider: string;
   model_family: string;
@@ -89,7 +90,40 @@ type InvestigationReport = {
   explanation?: string;
   failures?: Failure[];
   research?: ResearchReport;
-   error?: string;
+  recorded_example?: boolean;
+  custom_audit?: boolean;
+  assessment?: "failures_reproduced" | "checks_passed" | "inconclusive";
+  original_tests_label?: string;
+  agent_trace?: {
+    step: number;
+    tool: string;
+    path?: string;
+    result_excerpt: string;
+  }[];
+  model?: string;
+  generated_test_source?: string;
+  reference_validation?: {
+    success: boolean;
+    summary: TestSummary;
+    kind: string;
+  };
+  test_evidence?: {
+    test_name: string;
+    rationale: string;
+    expected_behavior: string;
+    provenance_status: string;
+    specification_refs?: { quote: string; verification: string }[];
+    citation_checks?: { source_id: string; claimed_quote: string; status: string; reason: string }[];
+    sources: {
+      source_id: string;
+      title: string;
+      url: string;
+      quote: string;
+      verification: string;
+    }[];
+  }[];
+  error?: string;
+  events?: ProgressEvent[];
 };
 
 type ProgressEvent = {
@@ -138,10 +172,8 @@ type View = "workspace" | "history";
    CONFIG
 ===================================================== */
 
-const API_URL = (
-  process.env.NEXT_PUBLIC_API_URL ||
-  (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "")
-).replace(/\/+$/, "");
+// Same-origin proxy keeps backend credentials server-side, including on Vercel.
+const API_URL = "/api/backend";
 
 /* =====================================================
    HELPERS
@@ -190,12 +222,16 @@ export default function Home() {
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
 
-  const [selectedScenario, setSelectedScenario] = useState("discount");
+  const [selectedScenario, setSelectedScenario] = useState("custom");
 
-  const [mode, setMode] = useState<InvestigationMode>("repair");
+  const [mode, setMode] = useState<InvestigationMode>("audit");
+  const [enableResearch, setEnableResearch] = useState(true);
+  const [sourceCode, setSourceCode] = useState("");
+  const [existingTests, setExistingTests] = useState("");
+  const isCustom = selectedScenario === "custom";
 
   const [bugReport, setBugReport] = useState(
-    "Customers report that applying a 0% discount produces an incorrect total. Other discount percentages appear to work.",
+    "",
   );
 
   const [view, setView] = useState<View>("workspace");
@@ -250,16 +286,16 @@ export default function Home() {
         const [healthResponse, historyResponse, scenariosResponse] =
           await Promise.all([
             fetch(`${API_URL}/api/health`, {
-              signal: AbortSignal.timeout(10000),
+              signal: AbortSignal.timeout(40000),
             }),
 
             fetch(`${API_URL}/api/investigations`, {
               cache: "no-store",
-              signal: AbortSignal.timeout(10000),
+              signal: AbortSignal.timeout(40000),
             }),
 
             fetch(`${API_URL}/api/scenarios`, {
-              signal: AbortSignal.timeout(10000),
+              signal: AbortSignal.timeout(40000),
             }),
           ]);
 
@@ -270,8 +306,8 @@ export default function Home() {
         const healthData: HealthStatus = await healthResponse.json();
 
         if (!cancelled) {
-          setHealth(healthData);
-          setConnectionState("online");
+          setHealth(healthData.ready === false ? null : healthData);
+          setConnectionState(healthData.ready === false ? "offline" : "online");
         }
 
         if (historyResponse.ok) {
@@ -315,7 +351,7 @@ export default function Home() {
   ===================================================== */
 
   const handleInvestigation = async () => {
-    if (loading || !bugReport.trim() || !health || scenarios.length === 0) {
+    if (loading || !bugReport.trim() || !health || health.ready === false || scenarios.length === 0 || (isCustom && (!sourceCode.trim() || !health.features?.custom_audit))) {
       return;
     }
 
@@ -336,12 +372,18 @@ export default function Home() {
         body: JSON.stringify({
           scenario_id: selectedScenario,
           bug_report: bugReport.trim(),
-          mode,
+          mode: isCustom ? "audit" : mode,
+          enable_research: isCustom ? false : enableResearch,
+          ...(isCustom ? { source_code: sourceCode, existing_tests: existingTests } : {}),
         }),
       });
 
       if (!response.ok || !response.body) {
-        throw new Error(`Investigation request failed (${response.status})`);
+        const failure = await response.json().catch(() => null);
+        throw new Error(
+          failure?.detail ||
+            `Investigation request failed (${response.status})`,
+        );
       }
 
       const reader = response.body.getReader();
@@ -432,11 +474,11 @@ export default function Home() {
 
       const data: InvestigationReport = await response.json();
 
-      setReport(data);
+      setReport({ ...data, investigation_id: id });
       if (data.scenario_id) setSelectedScenario(data.scenario_id);
       if (data.mode) setMode(data.mode);
       setBugReport(data.bug_report);
-      setEvents([]);
+      setEvents(data.events || (data.error ? [{ stage: "saved_error", status: "failed", message: `Saved failure: ${data.error}`, timestamp: data.timestamp }] : []));
       setView("workspace");
     } catch (err) {
       setError(
@@ -468,6 +510,27 @@ export default function Home() {
       document.getElementById("evidence")?.scrollIntoView({ block: "start" });
     }
   }, [loading, report]);
+
+  const loadRecorded = async () => {
+    if (loading) return;
+    try {
+      const response = await fetch("/evidence/recorded-investigation.json");
+      if (!response.ok)
+        throw new Error("Recorded evidence could not be loaded.");
+      const data: InvestigationReport = await response.json();
+      setReport({ ...data, recorded_example: true });
+      setView("workspace");
+      setError(null);
+      setEvents([]);
+      if (data.mode) setMode(data.mode);
+      if (data.scenario_id) setSelectedScenario(data.scenario_id);
+      setBugReport(data.bug_report);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not load recording.",
+      );
+    }
+  };
 
   const goToDesk = () => {
     document
@@ -529,6 +592,9 @@ export default function Home() {
           >
             Run history <span className="count">{history.length}</span>
           </button>
+          <Link className="nav-item" href="/benchmarks">
+            Evidence &amp; benchmark
+          </Link>
         </nav>
         <div className="connection">
           <span className={`status-dot ${connectionState}`} />
@@ -562,7 +628,12 @@ export default function Home() {
                 <button className="desk-link" onClick={goToDesk}>
                   Run an investigation <ArrowDown size={17} />
                 </button>
-                <span>Start with a built-in bug scenario.</span>
+                <button
+                  className="text-button"
+                  onClick={() => void loadRecorded()}
+                >
+                  Inspect a recorded run <ArrowUpRight size={14} />
+                </button>
               </div>
             </div>
             <aside
@@ -665,11 +736,10 @@ export default function Home() {
           <div className="notice" role="status">
             <TriangleAlert size={17} />
             <div>
-              <strong>Backend connection unavailable</strong>
+              <strong>Live investigations are currently unavailable</strong>
               <p>
-                {API_URL
-                  ? "Check that your API is running and allows this website’s origin."
-                  : "Set NEXT_PUBLIC_API_URL to your backend’s HTTPS URL in Vercel, then redeploy."}
+                You can still inspect a recorded investigation and the published
+                benchmark. Live runs need the connected Docker backend.
               </p>
             </div>
             <button
@@ -678,6 +748,16 @@ export default function Home() {
             >
               <RotateCw size={14} /> Retry
             </button>
+          </div>
+        )}
+        {report?.recorded_example && (
+          <div className="notice" role="status">
+            <strong>RECORDED INVESTIGATION</strong>
+            <p>
+              Saved on {formatDate(report.timestamp)}. This is supplied
+              historical execution evidence, not a live run. New reference
+              controls were not part of this recording.
+            </p>
           </div>
         )}
         {error && (
@@ -696,7 +776,7 @@ export default function Home() {
               </div>
               <p>A patch. A challenge. A record of what happened.</p>
             </div>
-            <div className="workspace-grid">
+            <div className={`workspace-grid ${isCustom ? "custom-workspace" : ""}`}>
               <aside className="setup-panel" aria-label="Investigation setup">
                 <div className="section-heading">
                   <span className="section-number">01</span>
@@ -708,7 +788,7 @@ export default function Home() {
                     void handleInvestigation();
                   }}
                 >
-                  <label htmlFor="scenario">Choose a scenario</label>
+                  <label htmlFor="scenario">Code to review</label>
                   <div className="select-wrap">
                     <GitBranch size={16} />
                     <select
@@ -718,14 +798,16 @@ export default function Home() {
                       onChange={(event) => {
                         const id = event.target.value;
                         setSelectedScenario(id);
+                        if (id === "custom") { setMode("audit"); setBugReport(""); }
                         const selected = scenarios.find(
                           (item) => item.id === id,
                         );
                         if (selected) setBugReport(selected.default_bug_report);
                       }}
                     >
-                      {!scenarios.length && (
-                        <option value="discount">
+                      <option value="custom">Your Python code</option>
+                      {!scenarios.length && !isCustom && (
+                        <option value={selectedScenario}>
                           {connectionState === "checking"
                             ? "Loading scenarios…"
                             : "Connect API to load scenarios"}
@@ -738,10 +820,22 @@ export default function Home() {
                       ))}
                     </select>
                   </div>
-                  {activeScenario && (
+                  {isCustom && (
+                    <div className="custom-inputs">
+                      <p className="field-note">Paste one Python module. Audit only; standard library and pytest. No dependency installation.</p>
+                      {connectionState !== "checking" && !health?.features?.custom_audit && <p className="field-note">Custom audits are not enabled on this backend.</p>}
+                      <label htmlFor="custom-source">Your code · solution.py</label>
+                      <textarea id="custom-source" className="custom-code" value={sourceCode} onChange={(event) => setSourceCode(event.target.value)} maxLength={20000} rows={12} spellCheck={false} disabled={loading} placeholder="Paste your Python functions or classes here" />
+                      <p className="field-note">{sourceCode.length.toLocaleString()} / 20,000 characters</p>
+                      <label htmlFor="custom-tests">Existing pytest tests (optional)</label>
+                      <textarea id="custom-tests" className="custom-code" value={existingTests} onChange={(event) => setExistingTests(event.target.value)} maxLength={12000} rows={6} spellCheck={false} disabled={loading} placeholder={"from solution import your_function\n\ndef test_example():\n    assert your_function() == expected"} />
+                      <p className="field-note">Without tests, the baseline checks only whether the module imports. Code and requirements are sent to Nebius. Results are not saved in shared history; download the report before leaving.</p>
+                    </div>
+                  )}
+                  {!isCustom && activeScenario && (
                     <p className="field-note">{activeScenario.description}</p>
                   )}
-                  <fieldset disabled={loading}>
+                  <fieldset disabled={loading || isCustom}>
                     <legend>Investigation mode</legend>
                     <div className="mode-control">
                       {(["repair", "audit"] as const).map((value) => (
@@ -764,8 +858,23 @@ export default function Home() {
                         : "Test the existing code. Leave the source unchanged."}
                     </p>
                   </fieldset>
+                  {!isCustom && <><label className="research-toggle">
+                    <input
+                      type="checkbox"
+                      checked={enableResearch}
+                      disabled={loading}
+                      onChange={(event) =>
+                        setEnableResearch(event.target.checked)
+                      }
+                    />{" "}
+                    Use Tavily documentation research
+                  </label>
+                  <p className="field-note">
+                    For the Safe Redirect Review, search is restricted to Python
+                    3.11 documentation. Research can be disabled for comparison.
+                  </p></>}
                   <div className="label-row">
-                    <label htmlFor="bug-report">Bug report</label>
+                    <label htmlFor="bug-report">{isCustom ? "Expected behavior / bug report" : "Bug report"}</label>
                     <span>{bugReport.length}/3000</span>
                   </div>
                   <textarea
@@ -783,9 +892,9 @@ export default function Home() {
                     type="submit"
                     disabled={
                       loading ||
-                      !health ||
+                      !health || health.ready === false ||
                       !scenarios.length ||
-                      !bugReport.trim()
+                      !bugReport.trim() || (isCustom && (!sourceCode.trim() || !health?.features?.custom_audit))
                     }
                   >
                     {loading ? (
@@ -795,7 +904,7 @@ export default function Home() {
                     )}
                     {loading
                       ? "Investigation running…"
-                      : mode === "repair"
+                      : isCustom ? "Audit my code" : mode === "repair"
                         ? "Run investigation"
                         : "Run audit"}
                     {!loading && <ArrowUpRight size={17} />}
@@ -830,13 +939,22 @@ export default function Home() {
                   <span className="run-id">
                     {report?.investigation_id
                       ? `RUN #${String(report.investigation_id).padStart(3, "0")}`
-                      : loading
+                      : report?.custom_audit ? "PRIVATE AUDIT" : loading
                         ? "RUN IN PROGRESS"
                         : "NO ACTIVE RUN"}
                   </span>
                 </div>
                 {report ? (
                   <>
+                    {report.custom_audit && <div className="custom-notice" role="status">
+                      <strong>CUSTOM CODE · NO REFERENCE CONTROL</strong>
+                      <p>This report reproduces test outcomes against your specification. It does not certify correctness and is not stored in shared history.</p>
+                      <button type="button" className="text-button" onClick={() => {
+                        const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }));
+                        const anchor = document.createElement("a"); anchor.href = url; anchor.download = "agentarena-custom-audit.json"; anchor.click();
+                        setTimeout(() => URL.revokeObjectURL(url), 1000);
+                      }}>Download report ↗</button>
+                    </div>}
                     <div
                       className={`verdict ${statusClass(report.status)}`}
                       role="status"
@@ -850,13 +968,34 @@ export default function Home() {
                       </span>
                       <div>
                         <p className="eyebrow">WHAT THE CHECKS FOUND</p>
-                        <h3>{statusLabel(report.status)}</h3>
+                        <h3>{report.custom_audit ? (report.assessment === "failures_reproduced" ? "Failures reproduced · needs review" : report.assessment === "checks_passed" ? "Checks passed · unvalidated" : "Inconclusive") : statusLabel(report.status)}</h3>
                         <p>
                           {report.explanation ||
                             "Review the test results and evidence below."}
                         </p>
                       </div>
                     </div>
+                    {report.reference_validation && (
+                      <div
+                        className={`reference-control ${report.reference_validation.success ? "pass" : "pending"}`}
+                      >
+                        <strong>
+                          Corrected reference control:{" "}
+                          {report.reference_validation.success
+                            ? "passed"
+                            : "needs review"}
+                        </strong>
+                        <p>
+                          The same generated suite ran against a curated
+                          corrected implementation withheld from the agent.{" "}
+                          {report.reference_validation.summary.passed}/
+                          {report.reference_validation.summary.total} passed.
+                        </p>
+                      </div>
+                    )}
+                    {report.model && (
+                      <p className="model-label">Model: {report.model}</p>
+                    )}
                     <div className="metrics">
                       <div>
                         <span>Test pass score</span>
@@ -868,7 +1007,7 @@ export default function Home() {
                         </strong>
                       </div>
                       <div>
-                        <span>Original tests</span>
+                        <span>{report.original_tests_label || "Original tests"}</span>
                         <strong>{testCount(report.original_tests)}</strong>
                       </div>
                       <div>
@@ -933,8 +1072,87 @@ export default function Home() {
                           </details>
                         )}
                       </section>
-                                        </div>
+                    </div>
 
+                    {!!report.test_evidence?.length && (
+                      <section className="provenance-section">
+                        <div className="subheading">
+                          <FileCode2 size={15} />
+                          <h4>Source → test → execution</h4>
+                        </div>
+                        <p>
+                          {report.custom_audit
+                            ? "Tests are checked against your supplied specification and code. No corrected reference is available; review each expectation."
+                            : "Excerpt matching verifies provenance, not that a source proves the assertion correct. The reference control tests the expected behaviour separately."}
+                        </p>
+                        {report.test_evidence.map((test) => (
+                          <article
+                            className="provenance-test"
+                            key={test.test_name}
+                          >
+                            <strong>{test.test_name}</strong>
+                            <p>{test.rationale}</p>
+                            <p>
+                              <b>Expected:</b>{" "}
+                              {test.expected_behavior || "See generated test"}
+                            </p>
+                            {test.specification_refs?.map((ref, index) => (
+                              <div key={`spec-${index}`}>
+                                <small>Supplied specification · excerpt matched</small>
+                                <blockquote>{ref.quote}</blockquote>
+                              </div>
+                            ))}
+                            {!!test.citation_checks?.length && (
+                              <details>
+                                <summary>Citation checks ({test.citation_checks.length})</summary>
+                                {test.citation_checks.map((check, index) => (
+                                  <div key={index}>
+                                    <p>{check.source_id || "Missing source ID"}: {check.status} — {check.reason.replaceAll("_", " ")}</p>
+                                    {check.claimed_quote && <blockquote>{check.claimed_quote}</blockquote>}
+                                  </div>
+                                ))}
+                              </details>
+                            )}
+                            {test.sources.length ? (
+                              test.sources.map((ref, index) => (
+                                <div key={index}>
+                                  <a
+                                    href={ref.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    {ref.source_id}: {ref.title || ref.url} ↗
+                                  </a>
+                                  <blockquote>{ref.quote}</blockquote>
+                                  <small>{ref.verification}</small>
+                                </div>
+                              ))
+                            ) : (
+                              <small>
+                                No verified source excerpt. This test relies on
+                                the supplied specification and code.
+                              </small>
+                            )}
+                          </article>
+                        ))}
+                      </section>
+                    )}
+                    {!!report.agent_trace?.length && (
+                      <details className="generated-tests">
+                        <summary>
+                          Inspect the coding agent’s observed actions
+                        </summary>
+                        <pre>{JSON.stringify(report.agent_trace, null, 2)}</pre>
+                      </details>
+                    )}
+                    {report.generated_test_source && (
+                      <details className="generated-tests">
+                        <summary>
+                          Inspect the complete generated test suite
+                        </summary>
+                        <pre>{report.generated_test_source}</pre>
+                      </details>
+                    )}
                     {report.research && report.research.enabled && (
                       <section
                         className="research-section"
@@ -960,7 +1178,7 @@ export default function Home() {
                         <div className="research-meta">
                           <div>
                             <span>RESEARCH PROVIDER</span>
-                            <strong>Tavily Search</strong>
+                            <strong>Tavily</strong>
                           </div>
 
                           <div>
@@ -1040,9 +1258,7 @@ export default function Home() {
                                         {source.title || "Untitled reference"}
                                       </strong>
 
-                                      <small>
-                                        {new URL(safeUrl).hostname}
-                                      </small>
+                                      <small>{new URL(safeUrl).hostname}</small>
                                     </span>
 
                                     <ArrowUpRight size={15} />
@@ -1051,26 +1267,26 @@ export default function Home() {
                               })}
                             </div>
                           </div>
-                          )}
+                        )}
 
-                          {report.research.error && (
-                            <p className="research-error">
-                              Research service: {report.research.error}
-                            </p>
-                          )}
-
-                          <p className="research-disclaimer">
-                            External references inform test generation. They do
-                            not establish repository requirements or independently
-                            prove a defect. Verification is based on executed
-                            tests and available specifications.
+                        {report.research.error && (
+                          <p className="research-error">
+                            Research service: {report.research.error}
                           </p>
-                        </section>
-                      )}
-                    </>
-                  ) : (
-                    <div
-                      className={`empty-evidence ${loading ? "is-running" : ""}`}
+                        )}
+
+                        <p className="research-disclaimer">
+                          External references inform test generation. They do
+                          not establish repository requirements or independently
+                          prove a defect. Verification is based on executed
+                          tests and available specifications.
+                        </p>
+                      </section>
+                    )}
+                  </>
+                ) : (
+                  <div
+                    className={`empty-evidence ${loading ? "is-running" : ""}`}
                   >
                     <div className="empty-symbol">
                       {loading ? (
@@ -1109,6 +1325,12 @@ export default function Home() {
                     </div>
                   </div>
                 )}
+                {report?.error && (
+                  <details className="execution-log">
+                    <summary>Saved failure diagnostics</summary>
+                    <pre>{report.error}</pre>
+                  </details>
+                )}
                 <details className="execution-log" open={loading || undefined}>
                   <summary>
                     <Terminal size={15} />
@@ -1116,7 +1338,7 @@ export default function Home() {
                     <span className="log-count">
                       {events.length
                         ? `${events.length} events`
-                        : "Awaiting run"}
+                        : report ? "No saved events" : "Awaiting run"}
                     </span>
                     {loading && <span className="status-dot online" />}
                   </summary>
@@ -1137,8 +1359,7 @@ export default function Home() {
                       ))
                     ) : (
                       <p>
-                        Commands and progress events will appear when an
-                        investigation starts.
+                        {report ? "This older report has no saved execution events. Its verdict and any saved error are retained." : "Commands and progress events will appear when an investigation starts."}
                       </p>
                     )}
                   </div>

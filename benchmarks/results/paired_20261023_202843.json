@@ -1,0 +1,655 @@
+{
+  "kind": "paired_live_model_evaluation",
+  "repeats": 1,
+  "limitations": "Curated seeded scenarios; symptoms are supplied. Record research failures and cold/warm cache state; no improvement is assumed.",
+  "results": [
+    {
+      "scenario": "callback",
+      "repeat": 1,
+      "configuration": "baseline",
+      "tests_with_matched_excerpts": 0,
+      "matched_excerpt_test_names": [],
+      "known_bug_detected": true,
+      "corrected_suite_passed": true,
+      "witness_tests": [
+        "test_adversarial.py::test_empty_value_preserved",
+        "test_adversarial.py::test_order_with_empty_and_repeated"
+      ],
+      "inconclusive": false,
+      "status": "REJECTED",
+      "duration_seconds": 42.81,
+      "research_status": "disabled",
+      "research_cached": false,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+      "model_usage": {
+        "verifier": {
+          "prompt_tokens": 1127,
+          "completion_tokens": 2933,
+          "total_tokens": 4060
+        },
+        "coding_agent": null
+      },
+      "report": {
+        "project": "AgentArena",
+        "version": "1.0",
+        "timestamp": "2026-10-23T20:28:43.122453+00:00",
+        "scenario_id": "callback",
+        "bug_report": "Some payment callbacks cannot be reconciled downstream even though the provider reports a valid signature. Failures correlate with optional metadata. Review the query-decoding helper: it must retain every submitted form field in order for downstream processing. Investigate Python 3.11 urllib.parse behavior and missing regression coverage; do not change the downstream signature algorithm.",
+        "coding_summary": "Adversarial Audit Mode: Source code was not modified.",
+        "patch_diff": "",
+        "verifier_analysis": "The helper must keep every submitted field, including those with empty values or empty names, and preserve their order. Current implementation uses urllib.parse.parse_qsl without keep_blank_values=True, which drops empty values and may drop empty keys, violating the contract.",
+        "original_tests": {
+          "total": 3,
+          "passed": 3,
+          "failed": 0,
+          "error": 0,
+          "skipped": 0
+        },
+        "adversarial_tests": {
+          "total": 3,
+          "passed": 1,
+          "failed": 2,
+          "error": 0,
+          "skipped": 0
+        },
+        "evidence_score": 73.33,
+        "status": "REJECTED",
+        "explanation": "The audited implementation failed executed checks. Inspect the failure evidence and reference control.",
+        "failures": [
+          {
+            "test_name": "test_adversarial.py::test_empty_value_preserved",
+            "category": "ASSERTION_FAILURE",
+            "explanation": "The test assertion failed. This may indicate a functional defect.",
+            "evidence": "def test_empty_value_preserved():\n>       assert parse_callback_query(\"field=&other=value\") == [(\"field\", \"\"), (\"other\", \"value\")]\nE       AssertionError: assert [('other', 'value')] == [('field', ''...er', 'value')]\nE         \nE         At index 0 diff: ('other', 'value') != ('field', '')\nE         Right contains one more item: ('other', 'value')\nE         Use -v to get more diff\n\ntest_adversarial.py:5: AssertionError"
+          },
+          {
+            "test_name": "test_adversarial.py::test_order_with_empty_and_repeated",
+            "category": "ASSERTION_FAILURE",
+            "explanation": "The test assertion failed. This may indicate a functional defect.",
+            "evidence": "def test_order_with_empty_and_repeated():\n>       assert parse_callback_query(\"a=1&b=&a=2\") == [(\"a\", \"1\"), (\"b\", \"\"), (\"a\", \"2\")]\nE       AssertionError: assert [('a', '1'), ('a', '2')] == [('a', '1'), ...), ('a', '2')]\nE         \nE         At index 1 diff: ('a', '2') != ('b', '')\nE         Right contains one more item: ('a', '2')\nE         Use -v to get more diff\n\ntest_adversarial.py:9: AssertionError"
+          }
+        ],
+        "research": {
+          "enabled": false,
+          "status": "disabled",
+          "query": "",
+          "sources": [],
+          "cached": false,
+          "error": null,
+          "insights": []
+        },
+        "agent_trace": [],
+        "generated_test_source": "import pytest\nfrom callbacks import parse_callback_query\n\ndef test_empty_value_preserved():\n    assert parse_callback_query(\"field=&other=value\") == [(\"field\", \"\"), (\"other\", \"value\")]\n\n\ndef test_order_with_empty_and_repeated():\n    assert parse_callback_query(\"a=1&b=&a=2\") == [(\"a\", \"1\"), (\"b\", \"\"), (\"a\", \"2\")]\n\n\ndef test_empty_key_preserved():\n    assert parse_callback_query(\"=empty&key=val\") == [(\"\", \"empty\"), (\"key\", \"val\")]\n\n\n",
+        "test_evidence": [
+          {
+            "test_name": "test_empty_value_preserved",
+            "rationale": "Ensures that fields with empty values are retained, as required by the contract to keep every submitted field.",
+            "expected_behavior": "The function should return [('field', ''), ('other', 'value')] for input 'field=&other=value'.",
+            "sources": [],
+            "provenance_status": "no_verified_source",
+            "claimed_reference_count": 1
+          },
+          {
+            "test_name": "test_order_with_empty_and_repeated",
+            "rationale": "Verifies that order is preserved when empty values appear between repeated keys, preserving all fields.",
+            "expected_behavior": "Input 'a=1&b=&a=2' should yield [('a', '1'), ('b', ''), ('a', '2')].",
+            "sources": [],
+            "provenance_status": "no_verified_source",
+            "claimed_reference_count": 1
+          },
+          {
+            "test_name": "test_empty_key_preserved",
+            "rationale": "Checks that a parameter with an empty name is kept, reflecting the requirement to retain all fields.",
+            "expected_behavior": "Input '=empty&key=val' should produce [('', 'empty'), ('key', 'val')].",
+            "sources": [],
+            "provenance_status": "no_verified_source",
+            "claimed_reference_count": 1
+          }
+        ],
+        "reference_validation": {
+          "success": true,
+          "exit_code": 0,
+          "summary": {
+            "total": 3,
+            "passed": 3,
+            "failed": 0,
+            "error": 0,
+            "skipped": 0
+          },
+          "tests": [
+            {
+              "name": "test_adversarial.py::test_empty_value_preserved",
+              "outcome": "passed",
+              "error": "",
+              "call_outcome": "passed",
+              "crash": {}
+            },
+            {
+              "name": "test_adversarial.py::test_order_with_empty_and_repeated",
+              "outcome": "passed",
+              "error": "",
+              "call_outcome": "passed",
+              "crash": {}
+            },
+            {
+              "name": "test_adversarial.py::test_empty_key_preserved",
+              "outcome": "passed",
+              "error": "",
+              "call_outcome": "passed",
+              "crash": {}
+            }
+          ],
+          "output": "...                                                                      [100%]\n3 passed in 0.12s\n",
+          "kind": "curated_corrected_control"
+        },
+        "execution": {
+          "original": {
+            "success": true,
+            "exit_code": 0,
+            "summary": {
+              "total": 3,
+              "passed": 3,
+              "failed": 0,
+              "error": 0,
+              "skipped": 0
+            },
+            "tests": [
+              {
+                "name": "test_callbacks.py::test_normal_callback",
+                "outcome": "passed",
+                "error": "",
+                "call_outcome": "passed",
+                "crash": {}
+              },
+              {
+                "name": "test_callbacks.py::test_repeated_names_keep_order",
+                "outcome": "passed",
+                "error": "",
+                "call_outcome": "passed",
+                "crash": {}
+              },
+              {
+                "name": "test_callbacks.py::test_form_encoding",
+                "outcome": "passed",
+                "error": "",
+                "call_outcome": "passed",
+                "crash": {}
+              }
+            ],
+            "output": "...                                                                      [100%]\n3 passed in 1.05s\n"
+          },
+          "adversarial": {
+            "success": false,
+            "exit_code": 1,
+            "summary": {
+              "total": 3,
+              "passed": 1,
+              "failed": 2,
+              "error": 0,
+              "skipped": 0
+            },
+            "tests": [
+              {
+                "name": "test_adversarial.py::test_empty_value_preserved",
+                "outcome": "failed",
+                "error": "def test_empty_value_preserved():\n>       assert parse_callback_query(\"field=&other=value\") == [(\"field\", \"\"), (\"other\", \"value\")]\nE       AssertionError: assert [('other', 'value')] == [('field', ''...er', 'value')]\nE         \nE         At index 0 diff: ('other', 'value') != ('field', '')\nE         Right contains one more item: ('other', 'value')\nE         Use -v to get more diff\n\ntest_adversarial.py:5: AssertionError",
+                "call_outcome": "failed",
+                "crash": {
+                  "path": "/workspace/test_adversarial.py",
+                  "lineno": 5,
+                  "message": "AssertionError: assert [('other', 'value')] == [('field', ''...er', 'value')]\n  \n  At index 0 diff: ('other', 'value') != ('field', '')\n  Right contains one more item: ('other', 'value')\n  Use -v to get more diff"
+                }
+              },
+              {
+                "name": "test_adversarial.py::test_order_with_empty_and_repeated",
+                "outcome": "failed",
+                "error": "def test_order_with_empty_and_repeated():\n>       assert parse_callback_query(\"a=1&b=&a=2\") == [(\"a\", \"1\"), (\"b\", \"\"), (\"a\", \"2\")]\nE       AssertionError: assert [('a', '1'), ('a', '2')] == [('a', '1'), ...), ('a', '2')]\nE         \nE         At index 1 diff: ('a', '2') != ('b', '')\nE         Right contains one more item: ('a', '2')\nE         Use -v to get more diff\n\ntest_adversarial.py:9: AssertionError",
+                "call_outcome": "failed",
+                "crash": {
+                  "path": "/workspace/test_adversarial.py",
+                  "lineno": 9,
+                  "message": "AssertionError: assert [('a', '1'), ('a', '2')] == [('a', '1'), ...), ('a', '2')]\n  \n  At index 1 diff: ('a', '2') != ('b', '')\n  Right contains one more item: ('a', '2')\n  Use -v to get more diff"
+                }
+              },
+              {
+                "name": "test_adversarial.py::test_empty_key_preserved",
+                "outcome": "passed",
+                "error": "",
+                "call_outcome": "passed",
+                "crash": {}
+              }
+            ],
+            "output": "FF.                                                                      [100%]\n=================================== FAILURES ===================================\n__________________________ test_empty_value_preserved __________________________\n\n    def test_empty_value_preserved():\n>       assert parse_callback_query(\"field=&other=value\") == [(\"field\", \"\"), (\"other\", \"value\")]\nE       AssertionError: assert [('other', 'value')] == [('field', ''...er', 'value')]\nE         \nE         At index 0 diff: ('other', 'value') != ('field', '')\nE         Right contains one more item: ('other', 'value')\nE         Use -v to get more diff\n\ntest_adversarial.py:5: AssertionError\n______________________ test_order_with_empty_and_repeated ______________________\n\n    def test_order_with_empty_and_repeated():\n>       assert parse_callback_query(\"a=1&b=&a=2\") == [(\"a\", \"1\"), (\"b\", \"\"), (\"a\", \"2\")]\nE       AssertionError: assert [('a', '1'), ('a', '2')] == [('a', '1'), ...), ('a', '2')]\nE         \nE         At index 1 diff: ('a', '2') != ('b', '')\nE         Right contains one more item: ('a', '2')\nE         Use -v to get more diff\n\ntest_adversarial.py:9: AssertionError\n=========================== short test summary info ============================\nFAILED test_adversarial.py::test_empty_value_preserved - AssertionError: asse...\nFAILED test_adversarial.py::test_order_with_empty_and_repeated - AssertionErr...\n2 failed, 1 passed in 0.25s\n"
+          }
+        },
+        "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+        "model_usage": {
+          "verifier": {
+            "prompt_tokens": 1127,
+            "completion_tokens": 2933,
+            "total_tokens": 4060
+          },
+          "coding_agent": null
+        },
+        "verification_warnings": [],
+        "verification_limits": "Curated scenario; reference checks reduce false positives but do not prove arbitrary code secure.",
+        "mode": "audit",
+        "events": [
+          {
+            "stage": "investigation",
+            "status": "running",
+            "message": "Investigation started: callback",
+            "timestamp": "2026-10-23T20:28:43.135089+00:00"
+          },
+          {
+            "stage": "coding",
+            "status": "completed",
+            "message": "Audit mode selected: skipping code modification",
+            "timestamp": "2026-10-23T20:28:43.135138+00:00"
+          },
+          {
+            "stage": "original_tests",
+            "status": "running",
+            "message": "Running original tests inside Docker",
+            "timestamp": "2026-10-23T20:28:43.135700+00:00"
+          },
+          {
+            "stage": "original_tests",
+            "status": "completed",
+            "message": "Original tests: 3/3 passed",
+            "timestamp": "2026-10-23T20:28:54.843217+00:00"
+          },
+          {
+            "stage": "adversarial",
+            "status": "running",
+            "message": "Nemotron is generating adversarial tests",
+            "timestamp": "2026-10-23T20:28:54.843243+00:00"
+          },
+          {
+            "stage": "adversarial",
+            "status": "running",
+            "message": "Verifier request 1/3 started (timeout up to 75s)",
+            "timestamp": "2026-10-23T20:28:55.053383+00:00"
+          },
+          {
+            "stage": "adversarial",
+            "status": "completed",
+            "message": "Generated 3 adversarial tests",
+            "timestamp": "2026-10-23T20:29:20.507056+00:00"
+          },
+          {
+            "stage": "verification",
+            "status": "running",
+            "message": "Executing adversarial tests inside Docker",
+            "timestamp": "2026-10-23T20:29:20.507083+00:00"
+          },
+          {
+            "stage": "verification",
+            "status": "failed",
+            "message": "Adversarial tests: 1/3 passed",
+            "timestamp": "2026-10-23T20:29:23.200290+00:00"
+          },
+          {
+            "stage": "scoring",
+            "status": "running",
+            "message": "Calculating evidence score",
+            "timestamp": "2026-10-23T20:29:23.200311+00:00"
+          },
+          {
+            "stage": "reference",
+            "status": "running",
+            "message": "Checking the generated tests against a curated corrected control",
+            "timestamp": "2026-10-23T20:29:23.236491+00:00"
+          },
+          {
+            "stage": "reference",
+            "status": "completed",
+            "message": "Corrected control passed",
+            "timestamp": "2026-10-23T20:29:25.839689+00:00"
+          }
+        ],
+        "investigation_id": 12
+      }
+    },
+    {
+      "scenario": "callback",
+      "repeat": 1,
+      "configuration": "tavily",
+      "tests_with_matched_excerpts": 0,
+      "matched_excerpt_test_names": [],
+      "known_bug_detected": true,
+      "corrected_suite_passed": true,
+      "witness_tests": [
+        "test_adversarial.py::test_blank_values_are_retained",
+        "test_adversarial.py::test_repeated_and_blank_fields_order",
+        "test_adversarial.py::test_empty_key_handling"
+      ],
+      "inconclusive": false,
+      "status": "REJECTED",
+      "duration_seconds": 28.89,
+      "research_status": "completed",
+      "research_cached": false,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+      "model_usage": {
+        "verifier": {
+          "prompt_tokens": 1552,
+          "completion_tokens": 1948,
+          "total_tokens": 3500
+        },
+        "coding_agent": null
+      },
+      "report": {
+        "project": "AgentArena",
+        "version": "1.0",
+        "timestamp": "2026-10-23T20:29:25.895132+00:00",
+        "scenario_id": "callback",
+        "bug_report": "Some payment callbacks cannot be reconciled downstream even though the provider reports a valid signature. Failures correlate with optional metadata. Review the query-decoding helper: it must retain every submitted form field in order for downstream processing. Investigate Python 3.11 urllib.parse behavior and missing regression coverage; do not change the downstream signature algorithm.",
+        "coding_summary": "Adversarial Audit Mode: Source code was not modified.",
+        "patch_diff": "",
+        "verifier_analysis": "The helper currently uses urllib.parse.parse_qsl without keep_blank_values=True, so fields with empty values are dropped. This breaks the contract that every submitted form field, including blanks, must be retained in order for downstream signature processing.",
+        "original_tests": {
+          "total": 3,
+          "passed": 3,
+          "failed": 0,
+          "error": 0,
+          "skipped": 0
+        },
+        "adversarial_tests": {
+          "total": 3,
+          "passed": 0,
+          "failed": 3,
+          "error": 0,
+          "skipped": 0
+        },
+        "evidence_score": 60.0,
+        "status": "REJECTED",
+        "explanation": "The audited implementation failed executed checks. Inspect the failure evidence and reference control.",
+        "failures": [
+          {
+            "test_name": "test_adversarial.py::test_blank_values_are_retained",
+            "category": "ASSERTION_FAILURE",
+            "explanation": "The test assertion failed. This may indicate a functional defect.",
+            "evidence": "def test_blank_values_are_retained():\n>       assert parse_callback_query(\"a=&b=2&c=\") == [(\"a\", \"\"), (\"b\", \"2\"), (\"c\", \"\")]\nE       AssertionError: assert [('b', '2')] == [('a', ''), (...'), ('c', '')]\nE         \nE         At index 0 diff: ('b', '2') != ('a', '')\nE         Right contains 2 more items, first extra item: ('b', '2')\nE         Use -v to get more diff\n\ntest_adversarial.py:5: AssertionError"
+          },
+          {
+            "test_name": "test_adversarial.py::test_repeated_and_blank_fields_order",
+            "category": "ASSERTION_FAILURE",
+            "explanation": "The test assertion failed. This may indicate a functional defect.",
+            "evidence": "def test_repeated_and_blank_fields_order():\n>       assert parse_callback_query(\"x=1&y=&x=2&z=\") == [(\"x\", \"1\"), (\"y\", \"\"), (\"x\", \"2\"), (\"z\", \"\")]\nE       AssertionError: assert [('x', '1'), ('x', '2')] == [('x', '1'), ...'), ('z', '')]\nE         \nE         At index 1 diff: ('x', '2') != ('y', '')\nE         Right contains 2 more items, first extra item: ('x', '2')\nE         Use -v to get more diff\n\ntest_adversarial.py:8: AssertionError"
+          },
+          {
+            "test_name": "test_adversarial.py::test_empty_key_handling",
+            "category": "ASSERTION_FAILURE",
+            "explanation": "The test assertion failed. This may indicate a functional defect.",
+            "evidence": "def test_empty_key_handling():\n>       assert parse_callback_query(\"=value&key=\") == [(\"\", \"value\"), (\"key\", \"\")]\nE       AssertionError: assert [('', 'value')] == [('', 'value'), ('key', '')]\nE         \nE         Right contains one more item: ('key', '')\nE         Use -v to get more diff\n\ntest_adversarial.py:11: AssertionError"
+          }
+        ],
+        "research": {
+          "enabled": true,
+          "status": "completed",
+          "query": "Python 3.11 urllib.parse.parse_qsl application/x-www-form-urlencoded parameters",
+          "sources": [
+            {
+              "id": "S1",
+              "title": "Python 3.11 urllib.parse (Tavily Extract)",
+              "url": "https://docs.python.org/3.11/library/urllib.parse.html",
+              "content": "eys are the unique query variable names and the values are lists of values for each name. The optional argument *keep\\_blank\\_values* is a flag indicating whether blank values in percent-encoded queries should be treated as blank strings. A true value indicates that blanks should be retained as blank strings. The default false value indicates that blank values are to be ignored and treated as if they were not included. The optional argument *strict\\_parsing* is a flag indicating what to do with parsing errors. If false (the default), errors are silently ignored. If true, errors raise a [`ValueError`](exceptions.html#ValueError \"ValueError\") exception. The optional *encoding* and *errors* parameters specify how to decode percent-encoded sequences into Unicode characters, as accepted by the [`bytes.decode()`](stdtypes.html#bytes.decode \"bytes.decode\") method. The optional argument *max\\_num\\_fields* is the maximum number of fields to read. If set, then throws a [`ValueError`](exceptions.html#ValueError \"ValueError\") if there are more than *max\\_num\\_fields* fields read. The optional argument *separator* is the symbol to use for separating the query arguments. It defaults to `&`. Use the [`urllib.parse.urlencode()`](#urllib.parse.urlencode \"urllib.parse.urlencode\") function (with the `doseq` parameter set to `True`) to convert such dictionaries into query strings. Changed in version 3.2: Add *encoding* and *errors* parameters. Changed in version 3.8: Added *max\\_num\\_fields* parameter. Changed in version 3.10: Added *separator* parameter with the default value of `&`. Python v"
+            }
+          ],
+          "cached": false,
+          "error": null,
+          "insights": [
+            "Python 3.11 parse_qsl defaults keep_blank_values=False, meaning blank values are omitted unless explicitly requested."
+          ]
+        },
+        "agent_trace": [],
+        "generated_test_source": "import pytest\nfrom callbacks import parse_callback_query\n\ndef test_blank_values_are_retained():\n    assert parse_callback_query(\"a=&b=2&c=\") == [(\"a\", \"\"), (\"b\", \"2\"), (\"c\", \"\")]\n\ndef test_repeated_and_blank_fields_order():\n    assert parse_callback_query(\"x=1&y=&x=2&z=\") == [(\"x\", \"1\"), (\"y\", \"\"), (\"x\", \"2\"), (\"z\", \"\")]\n\ndef test_empty_key_handling():\n    assert parse_callback_query(\"=value&key=\") == [(\"\", \"value\"), (\"key\", \"\")]\n\n",
+        "test_evidence": [
+          {
+            "test_name": "test_blank_values_are_retained",
+            "rationale": "The contract requires empty values to be kept as empty strings; the current implementation drops them.",
+            "expected_behavior": "Empty values appear as empty strings in the result, preserving submission order.",
+            "sources": [],
+            "provenance_status": "no_verified_source",
+            "claimed_reference_count": 1
+          },
+          {
+            "test_name": "test_repeated_and_blank_fields_order",
+            "rationale": "Repeated names and blank values must be preserved exactly as submitted to maintain signature integrity.",
+            "expected_behavior": "The result list includes blank values and repeated names in the original order.",
+            "sources": [],
+            "provenance_status": "no_verified_source",
+            "claimed_reference_count": 1
+          },
+          {
+            "test_name": "test_empty_key_handling",
+            "rationale": "Keys may be empty; the helper must still return them to avoid losing information needed for signature verification.",
+            "expected_behavior": "An empty key is represented as an empty string in the output tuple.",
+            "sources": [],
+            "provenance_status": "no_verified_source",
+            "claimed_reference_count": 0
+          }
+        ],
+        "reference_validation": {
+          "success": true,
+          "exit_code": 0,
+          "summary": {
+            "total": 3,
+            "passed": 3,
+            "failed": 0,
+            "error": 0,
+            "skipped": 0
+          },
+          "tests": [
+            {
+              "name": "test_adversarial.py::test_blank_values_are_retained",
+              "outcome": "passed",
+              "error": "",
+              "call_outcome": "passed",
+              "crash": {}
+            },
+            {
+              "name": "test_adversarial.py::test_repeated_and_blank_fields_order",
+              "outcome": "passed",
+              "error": "",
+              "call_outcome": "passed",
+              "crash": {}
+            },
+            {
+              "name": "test_adversarial.py::test_empty_key_handling",
+              "outcome": "passed",
+              "error": "",
+              "call_outcome": "passed",
+              "crash": {}
+            }
+          ],
+          "output": "...                                                                      [100%]\n3 passed in 0.07s\n",
+          "kind": "curated_corrected_control"
+        },
+        "execution": {
+          "original": {
+            "success": true,
+            "exit_code": 0,
+            "summary": {
+              "total": 3,
+              "passed": 3,
+              "failed": 0,
+              "error": 0,
+              "skipped": 0
+            },
+            "tests": [
+              {
+                "name": "test_callbacks.py::test_normal_callback",
+                "outcome": "passed",
+                "error": "",
+                "call_outcome": "passed",
+                "crash": {}
+              },
+              {
+                "name": "test_callbacks.py::test_repeated_names_keep_order",
+                "outcome": "passed",
+                "error": "",
+                "call_outcome": "passed",
+                "crash": {}
+              },
+              {
+                "name": "test_callbacks.py::test_form_encoding",
+                "outcome": "passed",
+                "error": "",
+                "call_outcome": "passed",
+                "crash": {}
+              }
+            ],
+            "output": "...                                                                      [100%]\n3 passed in 0.11s\n"
+          },
+          "adversarial": {
+            "success": false,
+            "exit_code": 1,
+            "summary": {
+              "total": 3,
+              "passed": 0,
+              "failed": 3,
+              "error": 0,
+              "skipped": 0
+            },
+            "tests": [
+              {
+                "name": "test_adversarial.py::test_blank_values_are_retained",
+                "outcome": "failed",
+                "error": "def test_blank_values_are_retained():\n>       assert parse_callback_query(\"a=&b=2&c=\") == [(\"a\", \"\"), (\"b\", \"2\"), (\"c\", \"\")]\nE       AssertionError: assert [('b', '2')] == [('a', ''), (...'), ('c', '')]\nE         \nE         At index 0 diff: ('b', '2') != ('a', '')\nE         Right contains 2 more items, first extra item: ('b', '2')\nE         Use -v to get more diff\n\ntest_adversarial.py:5: AssertionError",
+                "call_outcome": "failed",
+                "crash": {
+                  "path": "/workspace/test_adversarial.py",
+                  "lineno": 5,
+                  "message": "AssertionError: assert [('b', '2')] == [('a', ''), (...'), ('c', '')]\n  \n  At index 0 diff: ('b', '2') != ('a', '')\n  Right contains 2 more items, first extra item: ('b', '2')\n  Use -v to get more diff"
+                }
+              },
+              {
+                "name": "test_adversarial.py::test_repeated_and_blank_fields_order",
+                "outcome": "failed",
+                "error": "def test_repeated_and_blank_fields_order():\n>       assert parse_callback_query(\"x=1&y=&x=2&z=\") == [(\"x\", \"1\"), (\"y\", \"\"), (\"x\", \"2\"), (\"z\", \"\")]\nE       AssertionError: assert [('x', '1'), ('x', '2')] == [('x', '1'), ...'), ('z', '')]\nE         \nE         At index 1 diff: ('x', '2') != ('y', '')\nE         Right contains 2 more items, first extra item: ('x', '2')\nE         Use -v to get more diff\n\ntest_adversarial.py:8: AssertionError",
+                "call_outcome": "failed",
+                "crash": {
+                  "path": "/workspace/test_adversarial.py",
+                  "lineno": 8,
+                  "message": "AssertionError: assert [('x', '1'), ('x', '2')] == [('x', '1'), ...'), ('z', '')]\n  \n  At index 1 diff: ('x', '2') != ('y', '')\n  Right contains 2 more items, first extra item: ('x', '2')\n  Use -v to get more diff"
+                }
+              },
+              {
+                "name": "test_adversarial.py::test_empty_key_handling",
+                "outcome": "failed",
+                "error": "def test_empty_key_handling():\n>       assert parse_callback_query(\"=value&key=\") == [(\"\", \"value\"), (\"key\", \"\")]\nE       AssertionError: assert [('', 'value')] == [('', 'value'), ('key', '')]\nE         \nE         Right contains one more item: ('key', '')\nE         Use -v to get more diff\n\ntest_adversarial.py:11: AssertionError",
+                "call_outcome": "failed",
+                "crash": {
+                  "path": "/workspace/test_adversarial.py",
+                  "lineno": 11,
+                  "message": "AssertionError: assert [('', 'value')] == [('', 'value'), ('key', '')]\n  \n  Right contains one more item: ('key', '')\n  Use -v to get more diff"
+                }
+              }
+            ],
+            "output": "FFF                                                                      [100%]\n=================================== FAILURES ===================================\n________________________ test_blank_values_are_retained ________________________\n\n    def test_blank_values_are_retained():\n>       assert parse_callback_query(\"a=&b=2&c=\") == [(\"a\", \"\"), (\"b\", \"2\"), (\"c\", \"\")]\nE       AssertionError: assert [('b', '2')] == [('a', ''), (...'), ('c', '')]\nE         \nE         At index 0 diff: ('b', '2') != ('a', '')\nE         Right contains 2 more items, first extra item: ('b', '2')\nE         Use -v to get more diff\n\ntest_adversarial.py:5: AssertionError\n_____________________ test_repeated_and_blank_fields_order _____________________\n\n    def test_repeated_and_blank_fields_order():\n>       assert parse_callback_query(\"x=1&y=&x=2&z=\") == [(\"x\", \"1\"), (\"y\", \"\"), (\"x\", \"2\"), (\"z\", \"\")]\nE       AssertionError: assert [('x', '1'), ('x', '2')] == [('x', '1'), ...'), ('z', '')]\nE         \nE         At index 1 diff: ('x', '2') != ('y', '')\nE         Right contains 2 more items, first extra item: ('x', '2')\nE         Use -v to get more diff\n\ntest_adversarial.py:8: AssertionError\n___________________________ test_empty_key_handling ____________________________\n\n    def test_empty_key_handling():\n>       assert parse_callback_query(\"=value&key=\") == [(\"\", \"value\"), (\"key\", \"\")]\nE       AssertionError: assert [('', 'value')] == [('', 'value'), ('key', '')]\nE         \nE         Right contains one more item: ('key', '')\nE         Use -v to get more diff\n\ntest_adversarial.py:11: AssertionError\n=========================== short test summary info ============================\nFAILED test_adversarial.py::test_blank_values_are_retained - AssertionError: ...\nFAILED test_adversarial.py::test_repeated_and_blank_fields_order - AssertionE...\nFAILED test_adversarial.py::test_empty_key_handling - AssertionError: assert ...\n3 failed in 0.27s\n"
+          }
+        },
+        "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+        "model_usage": {
+          "verifier": {
+            "prompt_tokens": 1552,
+            "completion_tokens": 1948,
+            "total_tokens": 3500
+          },
+          "coding_agent": null
+        },
+        "verification_warnings": [],
+        "verification_limits": "Curated scenario; reference checks reduce false positives but do not prove arbitrary code secure.",
+        "mode": "audit",
+        "events": [
+          {
+            "stage": "investigation",
+            "status": "running",
+            "message": "Investigation started: callback",
+            "timestamp": "2026-10-23T20:29:25.898164+00:00"
+          },
+          {
+            "stage": "coding",
+            "status": "completed",
+            "message": "Audit mode selected: skipping code modification",
+            "timestamp": "2026-10-23T20:29:25.898202+00:00"
+          },
+          {
+            "stage": "original_tests",
+            "status": "running",
+            "message": "Running original tests inside Docker",
+            "timestamp": "2026-10-23T20:29:25.899348+00:00"
+          },
+          {
+            "stage": "original_tests",
+            "status": "completed",
+            "message": "Original tests: 3/3 passed",
+            "timestamp": "2026-10-23T20:29:28.125110+00:00"
+          },
+          {
+            "stage": "research",
+            "status": "running",
+            "message": "Researching relevant edge cases with Tavily",
+            "timestamp": "2026-10-23T20:29:28.125138+00:00"
+          },
+          {
+            "stage": "research",
+            "status": "completed",
+            "message": "Tavily found 1 research sources",
+            "timestamp": "2026-10-23T20:29:33.677517+00:00"
+          },
+          {
+            "stage": "adversarial",
+            "status": "running",
+            "message": "Nemotron is generating adversarial tests",
+            "timestamp": "2026-10-23T20:29:33.677558+00:00"
+          },
+          {
+            "stage": "adversarial",
+            "status": "running",
+            "message": "Verifier request 1/3 started (timeout up to 75s)",
+            "timestamp": "2026-10-23T20:29:33.681610+00:00"
+          },
+          {
+            "stage": "adversarial",
+            "status": "completed",
+            "message": "Generated 3 adversarial tests",
+            "timestamp": "2026-10-23T20:29:49.111050+00:00"
+          },
+          {
+            "stage": "verification",
+            "status": "running",
+            "message": "Executing adversarial tests inside Docker",
+            "timestamp": "2026-10-23T20:29:49.111083+00:00"
+          },
+          {
+            "stage": "verification",
+            "status": "failed",
+            "message": "Adversarial tests: 0/3 passed",
+            "timestamp": "2026-10-23T20:29:51.619019+00:00"
+          },
+          {
+            "stage": "scoring",
+            "status": "running",
+            "message": "Calculating evidence score",
+            "timestamp": "2026-10-23T20:29:51.619040+00:00"
+          },
+          {
+            "stage": "reference",
+            "status": "running",
+            "message": "Checking the generated tests against a curated corrected control",
+            "timestamp": "2026-10-23T20:29:51.637341+00:00"
+          },
+          {
+            "stage": "reference",
+            "status": "completed",
+            "message": "Corrected control passed",
+            "timestamp": "2026-10-23T20:29:54.731024+00:00"
+          }
+        ],
+        "investigation_id": 13
+      }
+    }
+  ]
+}

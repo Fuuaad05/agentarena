@@ -4,18 +4,22 @@ import logging
 import os
 import queue
 import threading
+import subprocess
+import shutil
 
 from typing import Literal
 
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from pydantic import BaseModel, Field
 
 from backend.pipeline import AgentArenaPipeline
+from backend.custom_audit import run_custom_audit, validate_custom_input
+from backend.limits import acquire_run, release_run
 from backend.workspace import investigation_workspace
 
 from backend.database.storage import (
@@ -67,7 +71,7 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "X-Arena-Token"],
 )
 
 
@@ -93,11 +97,27 @@ class InvestigationRequest(BaseModel):
     ] = "repair"
 
     enable_research: bool = True
+    source_code: str | None = Field(default=None, max_length=20000)
+    existing_tests: str = Field(default="", max_length=12000)
 
 
 # ==========================================
 # HELPERS
 # ==========================================
+
+def resolve_request(request):
+    if request.scenario_id != "custom":
+        return resolve_scenario(request.scenario_id)
+    if os.getenv("ENABLE_CUSTOM_AUDIT", "false").lower() != "true":
+        raise HTTPException(503, "Custom audits are disabled on this host.")
+    if request.mode != "audit":
+        raise HTTPException(400, "Custom code supports audit only.")
+    try:
+        validate_custom_input(request.source_code, request.existing_tests)
+    except (ValueError, SyntaxError) as error:
+        raise HTTPException(422, f"Invalid custom input: {error}")
+    return None
+
 
 def resolve_scenario(scenario_id: str):
 
@@ -125,10 +145,15 @@ def run_pipeline(
     mode: str = "repair",
     enable_research: bool = True,
     event_callback=None,
+    source_code=None,
+    existing_tests="",
 ):
     """
     Execute an investigation inside a temporary workspace.
     """
+
+    if scenario is None:
+        return run_custom_audit(source_code, existing_tests, bug_report, event_callback)
 
     with investigation_workspace(
         str(scenario.repo_path)
@@ -162,7 +187,17 @@ def root():
 
 @app.get("/api/health")
 def health():
+    docker_ready = False
+    if shutil.which("docker"):
+        try:
+            docker_ready = subprocess.run(["docker", "info", "--format", "{{.ServerVersion}}"], capture_output=True, timeout=15).returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    model_ready = bool(os.getenv("NEBIUS_API_KEY") and os.getenv("NEBIUS_BASE_URL"))
     return {
+        "ready": docker_ready and model_ready and bool(os.getenv("AGENTARENA_API_TOKEN")),
+        "dependencies": {"docker_daemon": docker_ready, "model_configured": model_ready, "tavily_configured": bool(os.getenv("TAVILY_API_KEY"))},
+        "features": {"custom_audit": os.getenv("ENABLE_CUSTOM_AUDIT", "false").lower() == "true"},
         "status": "healthy",
         "ai_provider": "Nebius Token Factory",
         "model_family": "NVIDIA Nemotron",
@@ -186,12 +221,11 @@ def scenarios():
 # ==========================================
 
 @app.post("/api/investigate")
-async def investigate(request: InvestigationRequest):
+async def investigate(request: InvestigationRequest, http_request: Request):
 
-    scenario = resolve_scenario(
-        request.scenario_id
-    )
+    scenario = resolve_request(request)
 
+    acquire_run(http_request)
     try:
         result = await asyncio.to_thread(
             run_pipeline,
@@ -199,6 +233,8 @@ async def investigate(request: InvestigationRequest):
             request.bug_report,
             request.mode,
             request.enable_research,
+            source_code=request.source_code,
+            existing_tests=request.existing_tests,
         )
 
         return result
@@ -212,6 +248,8 @@ async def investigate(request: InvestigationRequest):
             status_code=500,
             detail="Investigation failed",
         )
+    finally:
+        release_run()
 
 
 # ==========================================
@@ -219,12 +257,12 @@ async def investigate(request: InvestigationRequest):
 # ==========================================
 
 @app.post("/api/investigate/stream")
-async def investigate_stream(request: InvestigationRequest):
+async def investigate_stream(request: InvestigationRequest, http_request: Request):
 
-    scenario = resolve_scenario(
-        request.scenario_id
-    )
+    scenario = resolve_request(request)
 
+    # Reject unauthorised/over-budget requests before returning streaming headers.
+    acquire_run(http_request)
     def event_generator():
 
         event_queue = queue.Queue()
@@ -245,6 +283,8 @@ async def investigate_stream(request: InvestigationRequest):
                     mode=request.mode,
                     enable_research=request.enable_research,
                     event_callback=callback,
+                    source_code=request.source_code,
+                    existing_tests=request.existing_tests,
                 )
 
                 event_queue.put({
@@ -266,6 +306,7 @@ async def investigate_stream(request: InvestigationRequest):
                 })
 
             finally:
+                release_run()
                 event_queue.put(None)
 
         thread = threading.Thread(
@@ -273,11 +314,19 @@ async def investigate_stream(request: InvestigationRequest):
             daemon=True,
         )
 
-        thread.start()
+        try:
+            thread.start()
+        except Exception:
+            release_run()
+            raise
 
         while True:
 
-            event = event_queue.get()
+            try:
+                event = event_queue.get(timeout=15)
+            except queue.Empty:
+                yield ": heartbeat\n\n"
+                continue
 
             if event is None:
                 break

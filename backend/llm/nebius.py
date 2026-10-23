@@ -22,9 +22,12 @@ class NebiusLLM:
         if not base_url:
             raise RuntimeError("NEBIUS_BASE_URL is missing.")
 
+        self.usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         self.client = OpenAI(
             api_key=api_key,
             base_url=base_url,
+            timeout=45.0,
+            max_retries=0,
         )
 
     def chat(
@@ -32,6 +35,7 @@ class NebiusLLM:
         messages,
         tools=None,
         max_tokens=1500,
+        timeout=None,
     ):
         kwargs = {
             "model": self.model,
@@ -40,8 +44,15 @@ class NebiusLLM:
             "max_tokens": max_tokens,
         }
 
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
 
-        return self.client.chat.completions.create(**kwargs)
+        response = self.client.chat.completions.create(**kwargs)
+        if response.usage:
+            for key in self.usage:
+                self.usage[key] += getattr(response.usage, key, 0) or 0
+        return response

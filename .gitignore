@@ -45,3 +45,4 @@ npm-debug.log*
 
 # Generated adversarial tests
 **/test_adversarial.py
+data/latest_report.json

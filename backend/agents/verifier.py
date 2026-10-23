@@ -1,4 +1,7 @@
 import json
+import ast
+import time
+from openai import APIConnectionError, APIStatusError
 
 from backend.llm.nebius import NebiusLLM
 
@@ -51,7 +54,7 @@ IMPORTANT RULES:
 9. The runner provides pytest and the imports specified
    in the user prompt. Do not invent unavailable imports.
 
-10. Generate between 3 and 5 tests.
+10. Generate exactly 3 concise tests. Keep analysis and rationale short.
 
 11. Prefer deterministic tests with explicit expected values.
 
@@ -61,6 +64,22 @@ IMPORTANT RULES:
 13. Do not modify production source code.
 
 14. Return ONLY valid JSON.
+15. Each test must include rationale, expected_behavior, and source_refs.
+    source_refs is a list of {"source_id": "S1", "quote": "exact excerpt"}.
+    Use only supplied IDs and exact excerpts. Leave [] for specification-only tests. Never cite BUG_REPORT or invent an S1 when no research sources exist.
+    Quote at most 25 words per source across the entire response.
+    A source is not proof of repository intent: justify expectations from the bug report.
+    Do not claim Python integers overflow; they have arbitrary precision. Distinguish hypothetical coverage gaps from observed defects.
+16. Generate ordinary top-level test_ functions, no pytest.skip/xfail or subprocesses.
+
+17. Distinguish semantic preservation from byte-for-byte preservation. Do not
+    require literal dot segments or an unnormalised URL unless explicitly specified.
+    Prioritize the principal stated invariant over incidental formatting. When
+    supplied documentation explains URL interpretation, consider security implications
+    and cite the actual supporting excerpt; never fabricate a citation.
+18. A module heading or generic introduction is not evidence for a specific
+    parser option or behavior. Cite a passage that explains the relevant behavior
+    only if it informed your test, otherwise leave source_refs empty.
 
 Use this exact structure:
 
@@ -72,6 +91,9 @@ Use this exact structure:
     "tests": [
         {
             "name": "test_example",
+            "rationale": "Why this checks the reported contract",
+            "expected_behavior": "Concrete supported expectation",
+            "source_refs": [],
             "code": "def test_example():\\n    assert True"
         }
     ]
@@ -90,6 +112,7 @@ class AdversarialVerifier:
 
     def __init__(self):
         self.llm = NebiusLLM()
+        self.progress_callback = None
 
     def generate_tests(
         self,
@@ -147,55 +170,49 @@ class AdversarialVerifier:
             },
         ]
 
-        content = None
-
+        last_error = None
+        started = time.monotonic()
+        attempts = 0
+        notify = getattr(self, "progress_callback", None) or (lambda message: None)
         for attempt in range(1, 4):
-
-            print(
-                f"Verifier attempt {attempt}/3..."
-            )
-
-            response = self.llm.chat(
-                messages=messages,
-                max_tokens=4000,
-            )
-
-            choice = response.choices[0]
-
-            content = choice.message.content
-
-            if content and content.strip():
+            remaining = 150 - (time.monotonic() - started)
+            if remaining <= 0:
                 break
+            attempts = attempt
+            notify(f"Verifier request {attempt}/3 started (timeout up to {min(75, remaining):.0f}s)")
+            try:
+                response = self.llm.chat(messages=messages, max_tokens=6000, timeout=min(75, remaining))
+            except (APIConnectionError, APIStatusError) as error:
+                status = getattr(error, "status_code", None)
+                if status is not None and status != 429 and status < 500:
+                    notify(f"Verifier provider rejected the request (HTTP {status}); not retrying")
+                    raise
+                last_error = f"{type(error).__name__}" + (f" (HTTP {status})" if status else "")
+                notify(f"Verifier request {attempt}/3 failed: {last_error}")
+                if attempt < 3 and time.monotonic() - started < 148:
+                    time.sleep(attempt)
+                continue
+            choice = response.choices[0]
+            content = (choice.message.content or "").strip()
+            try:
+                if choice.finish_reason == "length":
+                    raise ValueError("Model output reached its token limit before completion.")
+                if content.startswith("```"):
+                    content = content.split("\n", 1)[1].rsplit("```", 1)[0]
+                return self._validate(json.loads(content))
+            except (ValueError, SyntaxError, TypeError, IndexError) as error:
+                last_error = error
+                notify(f"Verifier response {attempt}/3 failed validation: {type(error).__name__}")
+                # Retry invalid JSON and invalid Python, not only empty responses.
+                # Do not repeat a potentially huge/truncated model response.
+                messages.append({"role": "user", "content":
+                    "Your previous response was incomplete or invalid. Regenerate the entire JSON object. "
+                    "Use exactly 3 short tests, brief analysis, no markdown, and JSON-escaped newlines in code strings. "
+                    "Close every string, list, and object. Validation error: " + str(error)[:240]})
+        raise RuntimeError(f"Verifier failed after {attempts} attempts within the retry budget: {last_error}")
 
-            print(
-                "Model returned no final content. "
-                f"Finish reason: "
-                f"{choice.finish_reason}"
-            )
-
-        if not content or not content.strip():
-
-            raise RuntimeError(
-                "Verifier failed to generate a response "
-                "after 3 attempts."
-            )
-
-        content = content.strip()
-
-        if content.startswith("```"):
-
-            content = content.split(
-                "\n",
-                1,
-            )[1]
-
-            content = content.rsplit(
-                "```",
-                1,
-            )[0]
-
-        result = json.loads(content)
-
+    @staticmethod
+    def _validate(result):
         if not isinstance(result, dict):
 
             raise ValueError(
@@ -216,6 +233,7 @@ class AdversarialVerifier:
                 "Verifier generated more than 5 tests."
             )
 
+        function_names = set()
         for test in tests:
 
             if not isinstance(test, dict):
@@ -238,6 +256,14 @@ class AdversarialVerifier:
                 raise ValueError(
                     "Generated test contains empty code."
                 )
+
+            parsed = ast.parse(test["code"])
+            names = [n.name for n in parsed.body if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")]
+            if not names or function_names.intersection(names):
+                raise ValueError("Generated tests must have unique test_ function names.")
+            function_names.update(names)
+            # Preserve malformed citation claims for explicit provenance diagnostics.
+            # The evidence builder rejects invalid shapes; it never auto-attaches a source.
 
         insights = result.get(
             "research_insights",
