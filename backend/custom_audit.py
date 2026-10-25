@@ -45,10 +45,16 @@ class CustomAuditPipeline(AgentArenaPipeline):
 def run_custom_audit(source, tests, bug_report, event_callback=None):
     validate_custom_input(source,tests)
     with tempfile.TemporaryDirectory(prefix='arena_custom_') as directory:
-        root=Path(directory)
+        # Mount the readable child, not TemporaryDirectory's private (0700) root.
+        # The parent stays private on the host; Docker's UID 65532 can read the mount.
+        root=Path(directory)/'workspace'
+        root.mkdir(mode=0o755)
+        root.chmod(0o755)
         (root/'solution.py').write_text(source,encoding='utf-8')
         has_tests=bool(tests.strip())
         (root/'test_solution.py').write_text(tests if has_tests else 'def test_module_imports():\n    import solution\n',encoding='utf-8')
+        for filename in ('solution.py','test_solution.py'):
+            (root/filename).chmod(0o644)
         scenario=Scenario(id='custom',name='Your Python code',description='Single-file custom audit',repo_path=root,
                           source_file='solution.py',test_file='test_solution.py',test_imports='import solution\nfrom solution import *',default_bug_report=bug_report)
         return CustomAuditPipeline(str(root),scenario=scenario,event_callback=event_callback,

@@ -23,7 +23,15 @@ def test_custom_reports_are_unvalidated_and_not_publicly_saved(monkeypatch,sourc
         def generate_tests(self,**kwargs):
             assert 'from solution import *' in kwargs['test_imports']
             return {'analysis':'Fixture','tests':[{'code':'def test_add():\n    assert add(2,3)==5'}]}
-    monkeypatch.setattr(pipeline,'DockerSandbox',TrustedLocalRunner)
+    class PermissionCheckingRunner(TrustedLocalRunner):
+        def run_tests(self,test_file=None):
+            # A non-root container must traverse/read its bind-mounted workspace.
+            assert self.root.stat().st_mode & 0o005 == 0o005
+            assert self.root.parent.stat().st_mode & 0o077 == 0
+            for filename in ('solution.py','test_solution.py'):
+                assert (self.root/filename).stat().st_mode & 0o004
+            return super().run_tests(test_file)
+    monkeypatch.setattr(pipeline,'DockerSandbox',PermissionCheckingRunner)
     monkeypatch.setattr(pipeline,'AdversarialVerifier',Verifier)
     with patch('backend.pipeline.save_investigation') as save:
         report=run_custom_audit(source,existing_tests,'Add both numbers')
