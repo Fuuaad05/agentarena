@@ -81,6 +81,12 @@ IMPORTANT RULES:
     parser option or behavior. Cite a passage that explains the relevant behavior
     only if it informed your test, otherwise leave source_refs empty.
 
+19. For form-query decoding, distinguish a named blank field (such as key=)
+    from an empty separator segment (such as the gap in a=1&&b=2). Do not
+    invent an empty-name pair for separator gaps unless the specification
+    explicitly requires it. An explicitly submitted empty key (=value) is
+    different again. Base expectations on the actual parser contract.
+
 Use this exact structure:
 
 {

@@ -30,7 +30,7 @@ REQUEST_TIMEOUT = 15
 _cache_lock = threading.Lock()
 
 
-CACHE_SCHEMA_VERSION = 3
+CACHE_SCHEMA_VERSION = 4
 _CALLBACK_SIGNATURE = r"(?:urllib\.parse\.)?parse(?:\\)?_qsl(?:[\s*`\[\]]){0,12}\("
 
 
@@ -45,9 +45,13 @@ def callback_documentation_excerpt(raw):
         next_function = re.search(r"(?:urllib\.parse\.)?urlunparse(?:[\s*`\[\]]){0,12}\(", section, re.I)
         if next_function:
             section = section[:next_function.start()]
-        section = re.sub(r"\s+", " ", section).strip()[:1800]
-        if "blank values" in section.lower() or "blanks should" in section.lower():
-            return section
+        section = re.sub(r"\s+", " ", section).strip()
+        # Tavily may insert long Markdown link targets before the behavior paragraph.
+        # Locate the paragraph before bounding it; retain only actual retrieved text.
+        behavior = re.search(r"\bblank[\s*`_]+values\b|\bblanks[\s*`_]+should\b", section, re.I)
+        if behavior:
+            start = max(0, behavior.start() - 220) if behavior.start() >= 900 else 0
+            return section[start:start + 1800]
     return None
 
 

@@ -93,7 +93,11 @@ Never invent tools. You may ONLY use tools explicitly provided
 to you.
 
 Do not invent file contents. Read a file before modifying it.
-Do not modify tests merely to make them pass.
+Test files are read-only. Do not create or modify ANY test file.
+Existing tests may all pass because they miss the reported bug. Passing baseline
+checks does not resolve the bug report. Inspect the production boundary/logic
+against the stated requirements and edit production source when warranted.
+Do not fabricate failing baseline evidence if the original tests pass.
 
 When verification succeeds, respond with a concise summary:
 - Root cause
@@ -145,6 +149,9 @@ class CodingAgent:
             },
         ]
 
+        if self.repo.allowed_files:
+            messages[1]["content"] += "\nWritable production files: " + ", ".join(sorted(self.repo.allowed_files)) + ". Test files cannot be edited."
+        empty_responses = 0
         for step in range(1, self.max_steps + 1):
             print(f"\n--- Agent step {step} ---")
 
@@ -157,7 +164,11 @@ class CodingAgent:
 
             # The model has decided it is finished.
             if not message.tool_calls:
-                final_answer = message.content or "(No final answer)"
+                if not (message.content or "").strip() and empty_responses < 1 and step < self.max_steps:
+                    empty_responses += 1
+                    messages.append({"role": "user", "content": "Your last response was empty. Continue from the observed tool results. Test files are read-only; fix the production source if the bug report warrants it, run the existing tests, and provide an honest summary. If no fix was made, explicitly say so and why."})
+                    continue
+                final_answer = message.content or "Coding agent returned no final summary; inspect observed actions and patch diff."
                 print("\nAgent finished:")
                 print(final_answer)
 

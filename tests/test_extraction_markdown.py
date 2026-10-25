@@ -17,3 +17,15 @@ def test_navigation_match_does_not_hide_later_real_section():
 
 def test_signature_without_behavior_is_not_usable_documentation():
     assert callback_documentation_excerpt('parse_qsl(qs, keep_blank_values=False) urlunparse(parts)') is None
+
+
+def test_behavior_after_long_markdown_signature_is_not_truncated_away():
+    raw = "urllib.parse.parse_qsl(qs) " + ("[parameter](https://docs.python.org/" + "x" * 90 + ") ") * 22 + "The default false value indicates that blank values are ignored. urllib.parse.urlunparse(parts) NEXT"
+    excerpt = callback_documentation_excerpt(raw)
+    assert excerpt and "blank values are ignored" in excerpt
+    assert len(excerpt) <= 1800 and "NEXT" not in excerpt
+    assert excerpt in raw
+
+def test_markdown_emphasis_in_behavior_paragraph():
+    raw = "parse_qsl(qs) The blank **values** are ignored. urlunparse(parts)"
+    assert "blank **values**" in callback_documentation_excerpt(raw)
