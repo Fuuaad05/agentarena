@@ -17,15 +17,18 @@ def run_case(monkeypatch, tmp_path, edit=None):
         responses.append(response('write_file', path='shipping.py', content=edit))
     responses.extend([response('run_tests'), response()])
     iterator = iter(responses)
-    prompts, runs = [], []
+    prompts, runs, tool_sets = [], [], []
     class FakeLLM:
         def chat(self, messages, tools):
             prompts.append(list(messages))
+            tool_sets.append({tool['function']['name'] for tool in tools})
             return next(iterator)
     monkeypatch.setattr(module, 'NebiusLLM', FakeLLM)
     monkeypatch.setattr(module.RepositoryTools, 'run_tests', lambda self: runs.append(1) or 'Exit code: 0\n4 passed')
     agent = module.CodingAgent(str(tmp_path), allowed_files={'shipping.py'})
-    return agent.run('Include 1 kg'), runs, prompts, agent
+    summary = agent.run('Include 1 kg')
+    agent.offered_tool_sets = tool_sets
+    return summary, runs, prompts, agent
 
 
 def test_loop_stops_without_reexecuting_tests(monkeypatch, tmp_path):
@@ -48,3 +51,15 @@ def test_noop_write_cannot_reset_guard(monkeypatch, tmp_path):
     summary, runs, _, _ = run_case(monkeypatch, tmp_path, 'def fee(w):\n    return 5 if w < 1 else 10\n')
     assert summary.startswith('Repair incomplete:')
     assert len(runs) == 1
+
+
+def test_test_tool_is_withheld_until_actual_source_change(monkeypatch, tmp_path):
+    _, _, _, agent = run_case(monkeypatch, tmp_path,
+                             'def fee(w):\n    return 5 if w <= 1 else 10\n')
+    offered = agent.offered_tool_sets
+    assert 'run_tests' in offered[0]
+    assert 'run_tests' not in offered[1]
+    assert 'write_file' in offered[1]
+    assert 'run_tests' not in offered[2]
+    assert 'run_tests' in offered[3]
+    assert 'run_tests' not in offered[4]

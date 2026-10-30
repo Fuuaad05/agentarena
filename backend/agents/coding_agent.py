@@ -99,6 +99,10 @@ Existing tests may all pass because they miss the reported bug. Passing baseline
 checks does not resolve the bug report. Inspect the production boundary/logic
 against the stated requirements and edit production source when warranted.
 Do not fabricate failing baseline evidence if the original tests pass.
+After a test run, run_tests is unavailable until Python source actually changes.
+Use the source and bug report to decide whether a production fix is warranted.
+If it is, use write_file to apply it, then run_tests becomes available again.
+If you cannot make a justified repair, finish with an honest explanation.
 
 When verification succeeds, respond with a concise summary:
 - Root cause
@@ -170,9 +174,18 @@ class CodingAgent:
         for step in range(1, self.max_steps + 1):
             print(f"\n--- Agent step {step} ---")
 
+            # Offer tests again only after a real source change.
+            unchanged_since_tests = (
+                last_test_fingerprint is not None
+                and self._source_fingerprint() == last_test_fingerprint
+            )
+            available_tools = [
+                tool for tool in TOOLS
+                if not (unchanged_since_tests and tool["function"]["name"] == "run_tests")
+            ]
             response = self.llm.chat(
                 messages=messages,
-                tools=TOOLS,
+                tools=available_tools,
             )
 
             message = response.choices[0].message
