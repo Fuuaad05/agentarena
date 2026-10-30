@@ -53,3 +53,35 @@ def test_rejects_invalid_proposals_without_writes_or_tests(monkeypatch, tmp_path
     assert (tmp_path/'source.py').read_text() == 'def add(a, b): return a - b\n'
     assert (tmp_path/'test_source.py').read_text() == 'test sentinel'
     assert not executions
+
+
+def test_syntax_retry_uses_error_and_applies_only_valid_second_proposal(monkeypatch, tmp_path):
+    agent, requests, executions = make_agent(monkeypatch, tmp_path, [
+        ('write_file', {'path': 'source.py', 'content': 'def add(a, b)\n    return a+b'})])
+    original_chat = agent.llm.chat
+    def chat(**kwargs):
+        assert (tmp_path/'source.py').read_text() == 'def add(a, b): return a - b\n'
+        result = original_chat(**kwargs)
+        if len(requests) == 2:
+            assert 'SyntaxError' in kwargs['messages'][-1]['content']
+            assert 'invalid_proposed_content' in kwargs['messages'][-1]['content']
+            result.choices[0].message.tool_calls[0].function.arguments = json.dumps({
+                'path': 'source.py', 'content': 'def add(a, b): return a+b\n'})
+        return result
+    agent.llm.chat = chat
+    summary = agent._propose_patch('Sum two numbers', [], 5)
+    assert summary.startswith('Fresh model patch proposal applied')
+    assert len(requests) == 2
+    assert executions == [1]
+    assert 'a+b' in (tmp_path/'source.py').read_text()
+    assert any(t['tool'] == 'patch_validation' and 'line=1' in t['result_excerpt'] for t in agent.trace)
+
+
+def test_repeated_syntax_errors_stop_after_two_proposals(monkeypatch, tmp_path):
+    agent, requests, executions = make_agent(monkeypatch, tmp_path, [
+        ('write_file', {'path': 'source.py', 'content': 'def broken('})])
+    summary = agent._propose_patch('Sum', [], 5)
+    assert 'Both proposals failed Python syntax validation' in summary
+    assert len(requests) == 2
+    assert not executions
+    assert (tmp_path/'source.py').read_text() == 'def add(a, b): return a - b\n'
