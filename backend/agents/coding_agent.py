@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 from backend.llm.nebius import NebiusLLM
@@ -137,6 +138,18 @@ class CodingAgent:
 
         return f"ERROR: Unknown tool: {name}"
 
+    def _source_fingerprint(self):
+        """Ignore pytest reports/caches; detect actual Python source changes."""
+        digest = hashlib.sha256()
+        for path in sorted(self.repo.root.rglob("*.py")):
+            relative = path.relative_to(self.repo.root)
+            if any(part.startswith(".") or part == "__pycache__" for part in relative.parts):
+                continue
+            digest.update(str(relative).encode())
+            digest.update(b"\0")
+            digest.update(path.read_bytes())
+        return digest.hexdigest()
+
     def run(self, bug_report: str):
         messages = [
             {
@@ -152,6 +165,8 @@ class CodingAgent:
         if self.repo.allowed_files:
             messages[1]["content"] += "\nWritable production files: " + ", ".join(sorted(self.repo.allowed_files)) + ". Test files cannot be edited."
         empty_responses = 0
+        last_test_fingerprint = None
+        repeated_tests = 0
         for step in range(1, self.max_steps + 1):
             print(f"\n--- Agent step {step} ---")
 
@@ -200,11 +215,24 @@ class CodingAgent:
 
                     print(f"Arguments: {safe_args}")
 
+                stop_for_loop = False
                 try:
-                    result = self.execute_tool(
-                        name,
-                        arguments,
-                    )
+                    fingerprint = self._source_fingerprint() if name == "run_tests" else None
+                    if name == "run_tests" and fingerprint == last_test_fingerprint:
+                        repeated_tests += 1
+                        stop_for_loop = repeated_tests >= 2
+                        result = (
+                            "NOT EXECUTED: Python source is unchanged since the previous test run. "
+                            "Repeating the same suite adds no evidence. Baseline tests can miss the "
+                            "reported bug. Reassess the source against the bug report; make a minimal "
+                            "production change only if warranted, then run tests. If no change is "
+                            "warranted, explain why and finish honestly."
+                        )
+                    else:
+                        result = self.execute_tool(name, arguments)
+                        if name == "run_tests":
+                            last_test_fingerprint = fingerprint
+                            repeated_tests = 0
                 except Exception as error:
                     result = f"ERROR: {error}"
 
@@ -221,6 +249,26 @@ class CodingAgent:
                         "content": result,
                     }
                 )
+                if stop_for_loop:
+                    return (
+                        "Repair incomplete: the coding agent repeatedly requested tests without "
+                        "changing Python source, despite a recovery instruction. The repeated "
+                        "requests were not executed. Inspect the observed actions and patch diff; "
+                        "independent verification still evaluates the current source."
+                    )
+
+            # Send guidance after all results in a tool-call batch are supplied.
+            if any(
+                isinstance(item, dict) and item.get("role") == "tool"
+                and item.get("content", "").startswith("NOT EXECUTED:")
+                for item in messages[-len(message.tool_calls):]
+            ):
+                messages.append({
+                    "role": "user",
+                    "content": "The unchanged tests have already run. Reassess the reported defect "
+                    "using the source and requirements. Do not repeat run_tests before an actual "
+                    "source change. Either implement a justified fix or explain why you cannot.",
+                })
 
         result = (
             f"Agent stopped after reaching "
