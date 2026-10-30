@@ -63,3 +63,27 @@ def test_test_tool_is_withheld_until_actual_source_change(monkeypatch, tmp_path)
     assert 'run_tests' not in offered[2]
     assert 'run_tests' in offered[3]
     assert 'run_tests' not in offered[4]
+
+
+def test_recovery_starts_fresh_and_preserves_observed_source(monkeypatch, tmp_path):
+    (tmp_path/'shipping.py').write_text('def fee(w): return 5 if w < 1 else 10')
+    responses = iter([
+        response('read_file', path='shipping.py'),
+        response('run_tests'), response('run_tests'), response(),
+    ])
+    prompts = []
+    class FakeLLM:
+        def chat(self, messages, tools):
+            prompts.append(list(messages))
+            return next(responses)
+    monkeypatch.setattr(module, 'NebiusLLM', FakeLLM)
+    monkeypatch.setattr(module.RepositoryTools, 'run_tests', lambda self: 'Exit code: 0; 4 passed')
+    agent = module.CodingAgent(str(tmp_path), allowed_files={'shipping.py'})
+    assert agent.run('Include 1 kg') == 'Finished'
+    recovered = prompts[3]
+    assert [m['role'] for m in recovered] == ['system', 'user']
+    assert 'Include 1 kg' in recovered[1]['content']
+    assert 'Writable production files: shipping.py' in recovered[1]['content']
+    assert 'def fee(w): return 5 if w < 1 else 10' in recovered[1]['content']
+    assert 'Exit code: 0; 4 passed' in recovered[1]['content']
+    assert len([t for t in agent.trace if t['tool'] == 'run_tests']) == 2
