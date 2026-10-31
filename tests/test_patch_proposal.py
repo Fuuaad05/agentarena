@@ -1,87 +1,79 @@
-"""Fresh proposals remain scoped, syntactically valid, and independently testable."""
 import json
 from types import SimpleNamespace
 import pytest
 import backend.agents.coding_agent as module
 
+SOURCE = 'def add(a, b):\n    """Keep this docstring unchanged."""\n    return a - b\n'
 
-def make_agent(monkeypatch, tmp_path, proposals, finish='tool_calls'):
-    (tmp_path/'source.py').write_text('def add(a, b): return a - b\n')
+
+def edit(path='source.py', old='a - b', new='a + b', name='propose_edit'):
+    return SimpleNamespace(function=SimpleNamespace(name=name, arguments=json.dumps({
+        'path': path, 'old_text': old, 'new_text': new})))
+
+
+def setup_agent(monkeypatch, tmp_path, batches, finish='tool_calls'):
+    (tmp_path/'source.py').write_text(SOURCE)
     (tmp_path/'test_source.py').write_text('test sentinel')
-    requests, executions = [], []
+    requests, runs = [], []
     class FakeLLM:
         def chat(self, **kwargs):
             requests.append(kwargs)
-            calls = [SimpleNamespace(function=SimpleNamespace(
-                name=name, arguments=json.dumps(args))) for name, args in proposals]
-            return SimpleNamespace(choices=[SimpleNamespace(
-                finish_reason=finish, message=SimpleNamespace(tool_calls=calls))])
+            calls = batches[min(len(requests)-1, len(batches)-1)]
+            return SimpleNamespace(choices=[SimpleNamespace(finish_reason=finish,
+                message=SimpleNamespace(tool_calls=calls))])
     monkeypatch.setattr(module, 'NebiusLLM', FakeLLM)
-    monkeypatch.setattr(module.RepositoryTools, 'run_tests',
-                        lambda self: executions.append(1) or 'Exit code: 0\n3 passed')
-    agent = module.CodingAgent(str(tmp_path), allowed_files={'source.py'})
-    return agent, requests, executions
+    monkeypatch.setattr(module.RepositoryTools, 'run_tests', lambda self: runs.append(1) or 'Exit code: 0; tests passed')
+    return module.CodingAgent(str(tmp_path), allowed_files={'source.py'}), requests, runs
 
 
-def test_applies_model_proposal_and_executes_tests(monkeypatch, tmp_path):
-    agent, requests, executions = make_agent(monkeypatch, tmp_path, [
-        ('write_file', {'path': 'source.py', 'content': 'def add(a, b): return a + b\n'})])
-    result = agent._propose_patch('Return the sum', [
-        {'tool': 'run_tests', 'result': 'Exit code: 0; baseline passed'}], 5)
-    assert 'Fresh model patch proposal applied' in result
-    assert executions == [1]
-    assert 'a + b' in (tmp_path/'source.py').read_text()
+def test_applies_small_edit_without_rewriting_docstring(monkeypatch, tmp_path):
+    agent, requests, runs = setup_agent(monkeypatch, tmp_path, [[edit()]])
+    assert agent._propose_patch('Sum', [], 5).startswith('Fresh model patch proposal applied')
+    assert (tmp_path/'source.py').read_text() == SOURCE.replace('a - b', 'a + b')
     assert (tmp_path/'test_source.py').read_text() == 'test sentinel'
-    assert len(requests) == 1
-    assert [t['function']['name'] for t in requests[0]['tools']] == ['write_file']
+    assert runs == [1]
+    assert [t['function']['name'] for t in requests[0]['tools']] == ['propose_edit']
     assert [m['role'] for m in requests[0]['messages']] == ['system', 'user']
-    context = json.loads(requests[0]['messages'][1]['content'])
-    assert context['observed_test_results'] == ['Exit code: 0; baseline passed']
-    assert 'curated' not in context
 
 
-@pytest.mark.parametrize('name,args,finish', [
-    ('write_file', {'path': '../outside.py', 'content': 'x=1'}, 'tool_calls'),
-    ('write_file', {'path': 'test_source.py', 'content': 'x=1'}, 'tool_calls'),
-    ('write_file', {'path': 'source.py', 'content': 'def broken('}, 'tool_calls'),
-    ('run_command', {'command': 'anything'}, 'tool_calls'),
-    ('write_file', {'path': 'source.py', 'content': 'x=1'}, 'length'),
+@pytest.mark.parametrize('bad', [
+    edit(path='../outside.py'), edit(path='test_source.py'),
+    edit(old='missing text'), edit(old=''), edit(new='a - b'),
+    edit(new='('), edit(name='run_command'),
 ])
-def test_rejects_invalid_proposals_without_writes_or_tests(monkeypatch, tmp_path, name, args, finish):
-    agent, _, executions = make_agent(monkeypatch, tmp_path, [(name, args)], finish)
+def test_invalid_edits_are_bounded_and_never_written(monkeypatch, tmp_path, bad):
+    agent, requests, runs = setup_agent(monkeypatch, tmp_path, [[bad]])
     assert agent._propose_patch('Sum', [], 5).startswith('Repair incomplete:')
-    assert (tmp_path/'source.py').read_text() == 'def add(a, b): return a - b\n'
+    assert len(requests) == 2
+    assert not runs
+    assert (tmp_path/'source.py').read_text() == SOURCE
     assert (tmp_path/'test_source.py').read_text() == 'test sentinel'
-    assert not executions
+    assert any(t['tool'] == 'patch_validation' for t in agent.trace)
 
 
-def test_syntax_retry_uses_error_and_applies_only_valid_second_proposal(monkeypatch, tmp_path):
-    agent, requests, executions = make_agent(monkeypatch, tmp_path, [
-        ('write_file', {'path': 'source.py', 'content': 'def add(a, b)\n    return a+b'})])
-    original_chat = agent.llm.chat
-    def chat(**kwargs):
-        assert (tmp_path/'source.py').read_text() == 'def add(a, b): return a - b\n'
-        result = original_chat(**kwargs)
-        if len(requests) == 2:
-            assert 'SyntaxError' in kwargs['messages'][-1]['content']
-            assert 'invalid_proposed_content' in kwargs['messages'][-1]['content']
-            result.choices[0].message.tool_calls[0].function.arguments = json.dumps({
-                'path': 'source.py', 'content': 'def add(a, b): return a+b\n'})
-        return result
-    agent.llm.chat = chat
-    summary = agent._propose_patch('Sum two numbers', [], 5)
-    assert summary.startswith('Fresh model patch proposal applied')
+def test_ambiguous_match_is_rejected(monkeypatch, tmp_path):
+    agent, requests, runs = setup_agent(monkeypatch, tmp_path, [[edit(old='a', new='x')]])
+    assert 'match exactly once' in agent._propose_patch('Sum', [], 5)
+    assert not runs
+
+
+def test_syntax_feedback_can_recover_once(monkeypatch, tmp_path):
+    agent, requests, runs = setup_agent(monkeypatch, tmp_path, [[edit(new='(')], [edit()]])
+    assert agent._propose_patch('Sum', [], 5).startswith('Fresh model patch proposal applied')
     assert len(requests) == 2
-    assert executions == [1]
-    assert 'a+b' in (tmp_path/'source.py').read_text()
-    assert any(t['tool'] == 'patch_validation' and 'line=1' in t['result_excerpt'] for t in agent.trace)
+    assert 'SyntaxError' in requests[1]['messages'][-1]['content']
+    assert runs == [1]
 
 
-def test_repeated_syntax_errors_stop_after_two_proposals(monkeypatch, tmp_path):
-    agent, requests, executions = make_agent(monkeypatch, tmp_path, [
-        ('write_file', {'path': 'source.py', 'content': 'def broken('})])
-    summary = agent._propose_patch('Sum', [], 5)
-    assert 'Both proposals failed Python syntax validation' in summary
-    assert len(requests) == 2
-    assert not executions
-    assert (tmp_path/'source.py').read_text() == 'def add(a, b): return a - b\n'
+def test_valid_edit_is_not_written_if_another_edit_is_invalid(monkeypatch, tmp_path):
+    agent, _, runs = setup_agent(monkeypatch, tmp_path, [[edit(), edit(path='test_source.py')]])
+    assert agent._propose_patch('Sum', [], 5).startswith('Repair incomplete:')
+    assert (tmp_path/'source.py').read_text() == SOURCE
+    assert not runs
+
+
+def test_truncated_proposal_cannot_write(monkeypatch, tmp_path):
+    agent, _, runs = setup_agent(monkeypatch, tmp_path, [[edit()]], finish='length')
+    assert 'truncated' in agent._propose_patch('Sum', [], 5)
+    assert not runs
+    assert (tmp_path/'source.py').read_text() == SOURCE
